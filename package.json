@@ -2,8 +2,10 @@
   "name": "buscador-aws-s3",
   "version": "1.0.0",
   "main": "index.js",
+  "type": "module",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node src/server.js",
+    "dev": "cross-env NODE_ENV=development node src/server.js"
   },
   "keywords": [],
   "author": "",
@@ -14,5 +16,8 @@
     "@aws-sdk/s3-request-presigner": "^3.886.0",
     "dotenv": "^17.2.2",
     "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
   }
 }
