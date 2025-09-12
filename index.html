@@ -2,20 +2,21 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Buscador de Arquivos S3</title>
+    <title>Buscador de Gravações no S3</title>
     <style>
-        body { font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; }
+        body { font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; background: #2b2b2b; color: #fff; }
+        h1 { text-align: center; color: #3075f7;}
         input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; }
         #resultado { margin-top: 20px; }
     </style>
 </head>
 <body>
-    <h1>Buscador de Arquivos no S3</h1>
+    <h1>Buscador de Gravações no S3</h1>
     <form id="formBusca">
-        <label for="Data">Data do Protocolo:</label>
+        <label for="dataProtocolo">Data do Protocolo:</label>
         <input type="date" id="data" name="data" placeholder="Ex: 2025/09/11" required>
-        <label for="nomeArquivo">Nome do Arquivo:</label>
-        <input type="text" id="nomeArquivo" name="nomeArquivo" placeholder="Ex: protocolo-12345.mp3" required>
+        <label for="nomeProtocolo">Nome do Arquivo:</label>
+        <input type="text" id="nomeProtocolo" name="nomeProtocolo" placeholder="Ex: protocolo-12345.mp3" required>
         <button type="submit">Buscar e Baixar</button>
     </form>
     <div id="resultado"></div>
@@ -23,8 +24,8 @@
     <script>
         document.getElementById('formBusca').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const pasta = document.getElementById('pasta').value;
-            const nomeArquivo = document.getElementById('nomeArquivo').value;
+            const pasta = document.getElementById('data').value;
+            const nomeProtocolo = document.getElementById('nomeProtocolo').value;
             const resultadoDiv = document.getElementById('resultado');
 
             resultadoDiv.innerHTML = '<p>Buscando...</p>';
@@ -33,7 +34,7 @@
                 const response = await fetch('/buscar-arquivo', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ pasta, nomeArquivo })
+                    body: JSON.stringify({ pasta, nomeProtocolo })
                 });
 
                 const data = await response.json();
@@ -42,12 +43,15 @@
                     const link = document.createElement('a');
                     link.href = data.downloadUrl;
                     link.textContent = 'Clique aqui para baixar o arquivo';
-                    link.download = nomeArquivo; // Sugere o nome do arquivo para download
+                    
+                    // CORREÇÃO: Usa o nome de arquivo completo retornado pelo servidor
+                    link.download = data.nomeParaDownload; 
+                    
                     resultadoDiv.innerHTML = '';
                     resultadoDiv.appendChild(link);
                     
                     // Inicia o download automaticamente
-                    link.click(); 
+                    //link.click(); 
 
                 } else {
                     resultadoDiv.innerHTML = `<p style="color:red;">Erro: ${data.error}</p>`;
