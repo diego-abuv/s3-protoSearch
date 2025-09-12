@@ -12,7 +12,7 @@ export function createApp(s3Service) {
     app.use(express.json());
 
     // Servir arquivos estáticos da pasta 'public'
-    app.use(express.static(path.join(__dirname, '..', 'public')));
+    app.use(express.static(path.resolve(__dirname, '..', 'public')));
 
     // Configuração específica para o modo MOCK
     if (process.env.NODE_ENV === 'development') {

@@ -2,66 +2,44 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
-    <title>Buscador de Gravações no S3</title>
-    <style>
-        body { font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; background: #2b2b2b; color: #fff; }
-        h1 { text-align: center; color: #3075f7;}
-        input, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; }
-        #resultado { margin-top: 20px; }
-    </style>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buscador de Protocolos S3</title>
+    <!-- Incluindo o CSS do Bootstrap via CDN -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <!-- Incluindo nosso CSS customizado -->
+    <link rel="stylesheet" href="/style.css">
 </head>
-<body>
-    <h1>Buscador de Gravações no S3</h1>
-    <form id="formBusca">
-        <label for="dataProtocolo">Data do Protocolo:</label>
-        <input type="date" id="data" name="data" required>
-        <label for="nomeProtocolo">Nome do Arquivo:</label>
-        <input type="text" id="nomeProtocolo" name="nomeProtocolo" placeholder="Ex: protocolo-12345.mp3" required>
-        <button type="submit">Buscar e Baixar</button>
-    </form>
-    <div id="resultado"></div>
+<body class="d-flex align-items-center py-4 bg-body-tertiary" data-bs-theme="dark">
+    <main class="container">
+        <div class="row justify-content-center">
+            <div class="col-lg-6">
+                <div class="card shadow-lg">
+                    <div class="card-body p-4 p-md-5">
+                        <h1 class="card-title text-center mb-4 fs-3">Buscador de Protocolos S3</h1>
+                        <form id="formBusca" novalidate>
+                            <div class="form-floating mb-3">
+                                <input type="date" class="form-control" id="data" name="data" placeholder="Data do Protocolo" required>
+                                <label for="data" class="form-label">Data do Protocolo</label>
+                            </div>
+                            <div class="form-floating mb-3">
+                                <input type="text" class="form-control" id="nomeProtocolo" name="nomeProtocolo" placeholder="Ex: protocolo-12345.mp3" required>
+                                <label for="nomeProtocolo" class="form-label">Nome do Arquivo</label>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100" id="btnBuscar">
+                                <span id="btn-text">Buscar Arquivo</span>
+                                <span id="btn-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                            </button>
+                        </form>
+                        <div id="resultado" class="mt-4 text-center"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
 
-    <script>
-        document.getElementById('formBusca').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const pasta = document.getElementById('data').value;
-            const nomeProtocolo = document.getElementById('nomeProtocolo').value;
-            const resultadoDiv = document.getElementById('resultado');
-
-            resultadoDiv.innerHTML = '<p>Buscando...</p>';
-
-            try {
-                const response = await fetch('/buscar-arquivo', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ pasta, nomeProtocolo })
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    const link = document.createElement('a');
-                    link.href = data.downloadUrl;
-                    link.textContent = 'Clique aqui para baixar o arquivo';
-                    
-                    // CORREÇÃO: Usa o nome de arquivo completo retornado pelo servidor
-                    link.download = data.nomeParaDownload; 
-                    
-                    resultadoDiv.innerHTML = '';
-                    resultadoDiv.appendChild(link);
-                    
-                    // Inicia o download automaticamente
-                    //link.click(); 
-
-                } else {
-                    resultadoDiv.innerHTML = `<p style="color:red;">Erro: ${data.error}</p>`;
-                }
-
-            } catch (error) {
-                console.error('Erro na requisição:', error);
-                resultadoDiv.innerHTML = '<p style="color:red;">Erro ao conectar com o servidor.</p>';
-            }
-        });
-    </script>
+    <!-- Incluindo nosso JavaScript customizado -->
+    <script src="/main.js" defer></script>
+    <!-- Incluindo o JS do Bootstrap (opcional, mas bom para componentes futuros) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
 </body>
 </html>
