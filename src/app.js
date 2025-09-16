@@ -16,8 +16,8 @@ export function createApp(s3Service) {
     app.use(express.static(path.resolve(__dirname, '..', 'public')));
 
     // Configuração específica para o modo MOCK
-    if (process.env.NODE_ENV === 'development') {
-        console.log("Modo de desenvolvimento: rota de download local ativada.");
+    if (process.env.NODE_ENV === 'local-server') {
+        console.log("Modo de busca local: rota de download ativada.");
 
         /**
          * Retorna uma lista de todos os caminhos base configurados nas variáveis PATH_.

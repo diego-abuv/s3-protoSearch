@@ -62,7 +62,14 @@ AWS_BUCKET_NAME=nome-do-seu-bucket-aqui
 # Caminho absoluto para a pasta que simula o bucket localmente
 # Exemplo Windows: E:/Caminho/Para/Sua/Pasta/Local
 # Exemplo Linux/macOS: /home/usuario/caminho/para/pasta/local
-LOCAL_FILE_PATH=caminho-absoluto-para-sua-pasta-mock
+LOCAL_FILE_PATH=E:/Caminho/Para/Sua/Pasta/Local
+
+# ==================================================
+# Variaveis para o modo de busca interna (servidor)
+# =======================================
+# Servidor X (estrutura especial com subpastas)
+PATH_X=\\X.X.X.X\caminho\para\pasta\raiz\compartilhada
+YEARS_X="2019,2020,2021"
 ```
 
 ## Estrutura de Pastas e Buckets
@@ -81,21 +88,17 @@ s3://[nome-do-seu-bucket-aqui]/
             └── nome-do-arquivo.mp3
 ```
 
-**Exemplo:** Um arquivo criado em 21 de maio de 2024 deve estar no caminho `s3://meu-bucket/2024/05/21/protocolo-123.mp3`.
+**Exemplo:** Um arquivo de 1 de Outubro de 2024, às 10h, deve estar em `s3://meu-bucket/2024/10/1/10/arquivo.wav`.
 
-### Ambiente de Desenvolvimento (Local Mock)
+### Ambiente de Desenvolvimento (Busca Local)
 
-A pasta local definida em `LOCAL_FILE_PATH` deve espelhar a mesma estrutura do S3.
+A estrutura de pastas nos seus servidores locais deve corresponder à configuração no `.env`.
 
-```
-[caminho-absoluto-para-sua-pasta-mock]/
-└── YYYY/
-    └── MM/
-        └── DD/
-            └── nome-do-arquivo.mp3
-```
+*   **Estrutura Padrão:** O sistema buscará em `[caminho-raiz]\YYYY\M\D\`.
+    *   Exemplo: `\\servidor-antigo\gravacoes\2021\5\21\arquivo.wav`
 
-**Exemplo:** `E:/Projetos/MockS3/2024/05/21/protocolo-123.mp3`.
+*   **Estrutura Especial:** O sistema buscará em `[caminho-base]\[subpasta]\YYYY\MM\DD\`.
+    *   Exemplo: `\\servidor-novo\gravacoes\gravador01\2024\05\21\arquivo.wav`
 
 ## Instalação e Execução
 
@@ -112,21 +115,20 @@ A pasta local definida em `LOCAL_FILE_PATH` deve espelhar a mesma estrutura do S
 
 3.  **Inicie a aplicação com PM2:**
 
-    *   **Para iniciar em modo de DESENVOLVIMENTO (mock):**
+    *   **Para iniciar em modo de DESENVOLVIMENTO (busca local):**
         ```bash
-        pm2 start ecosystem.config.cjs --only buscador-s3-dev
+        pm2 start ecosystem.config.cjs --only buscador-local-server
         ```
 
-    *   **Para iniciar em modo de PRODUÇÃO (com S3 real):**
+    *   **Para iniciar em modo de PRODUÇÃO (busca no S3):**
         ```bash
-        pm2 start ecosystem.config.cjs --only buscador-s3
+        pm2 start ecosystem.config.cjs --only buscador-s3-bucket
         ```
 
 ## Comandos Importantes do PM2
 
-Aqui está uma lista de comandos úteis para gerenciar sua aplicação com o PM2. Substitua `<nome-do-app>` por `buscador-s3` ou `buscador-s3-dev`.
+Aqui está uma lista de comandos úteis para gerenciar sua aplicação com o PM2. Substitua `<nome-do-app>` por `buscador-s3-bucket` ou `buscador-local-server`.
 
-- **Listar todas as aplicações:**
   ```bash
   pm2 list
   ```

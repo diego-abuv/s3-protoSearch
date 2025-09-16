@@ -109,8 +109,8 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
 
                 const arquivoEncontrado = contents.find(obj => {
                     // Normaliza para minúsculas para uma comparação case-insensitive
-                    const nomeBaseNaChave = path.parse(obj.Key).name.toLowerCase();
-                    const termoBuscado = nomeProtocolo.toLowerCase();
+                    const nomeBaseNaChave = path.parse(obj.Key).name.toLowerCase(); // Nome do arquivo no disco, sem extensão
+                    const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase(); // Nome do arquivo buscado, também sem extensão
                     return nomeBaseNaChave.includes(termoBuscado);
                 });
 

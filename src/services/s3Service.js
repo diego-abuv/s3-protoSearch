@@ -11,37 +11,79 @@ const s3Client = new S3Client({
     },
 });
 
-const bucketName = process.env.AWS_BUCKET_NAME;
+// Garante que o nome do bucket não contenha prefixos ou barras extras.
+const rawBucketName = process.env.AWS_BUCKET_NAME || '';
+const bucketName = rawBucketName.replace(/s3:\/\/|\//g, '');
+
 
 export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
-    // Lista todos os objetos na pasta da data (ex: '2024/06/03/')
-    const listCommand = new ListObjectsV2Command({
-        Bucket: bucketName,
-        Prefix: `${pasta}/`,
-    });
+    // O serviço recebe a pasta como 'YYYY/MM/DD'.
+    // Para o S3, formatamos para 'YYYY/M/D' (sem zeros à esquerda no mês e dia).
+    const [ano, mes, dia] = pasta.split('/');
+    const mesSemZero = parseInt(mes, 10).toString();
+    const diaSemZero = parseInt(dia, 10).toString();
+    const prefixoBusca = `${ano}/${mesSemZero}/${diaSemZero}`;
 
-    const listResponse = await s3Client.send(listCommand);
+    console.log(`\n--- Iniciando busca no S3 ---`);
+    console.log(`- Bucket: ${bucketName}`);
+    console.log(`- Prefixo (pasta): ${prefixoBusca}`);
+    console.log(`- Termo de busca (nome do arquivo): ${nomeProtocolo}`);
 
-    if (listResponse.Contents && listResponse.Contents.length > 0) {
-        // Encontra o primeiro arquivo cujo nome base corresponde ao do protocolo
-        const arquivoEncontrado = listResponse.Contents.find(obj => {
-            const nomeBaseNaChave = path.parse(obj.Key).name.toLowerCase();
-            const termoBuscado = nomeProtocolo.toLowerCase();
-            return nomeBaseNaChave.includes(termoBuscado);
+    let isTruncated = true;
+    let continuationToken;
+    let arquivoEncontrado = null;
+
+    // Loop otimizado para paginação. Ele para assim que o arquivo é encontrado.
+    while (isTruncated) {
+        const listCommand = new ListObjectsV2Command({
+            Bucket: bucketName,
+            Prefix: prefixoBusca,
+            ContinuationToken: continuationToken,
         });
+        
+        const listResponse = await s3Client.send(listCommand);
+        
+        if (listResponse.Contents) {
+            console.log(`- Verificando ${listResponse.Contents.length} objetos nesta página...`);
+            
+            // Tenta encontrar o arquivo no lote atual de objetos
+            const encontradoNaPagina = listResponse.Contents.find(obj => {
+                const nomeBaseNaChave = path.parse(obj.Key).name.toLowerCase();
+                const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase();
+                return nomeBaseNaChave.includes(termoBuscado);
+            });
 
-        if (!arquivoEncontrado) return null;
+            if (encontradoNaPagina) {
+                console.log(`- Arquivo correspondente encontrado: ${encontradoNaPagina.Key}`);
+                arquivoEncontrado = encontradoNaPagina;
+                break; // Sai do loop while, pois já encontramos o que queríamos.
+            }
+        }
 
+        // Prepara para a próxima iteração, se houver mais páginas
+        isTruncated = !!listResponse.IsTruncated;
+        if (isTruncated) {
+            continuationToken = listResponse.NextContinuationToken;
+            console.log('- Arquivo não encontrado nesta página, buscando próxima...');
+        }
+    }
+
+    if (arquivoEncontrado) {
+        const nomeParaDownload = path.basename(arquivoEncontrado.Key);
+
+        // Adiciona ResponseContentDisposition para forçar o download no navegador
         const getCommand = new GetObjectCommand({
             Bucket: bucketName,
             Key: arquivoEncontrado.Key,
+            ResponseContentDisposition: `attachment; filename="${nomeParaDownload}"`,
         });
-
         const downloadUrl = await getSignedUrl(s3Client, getCommand, { expiresIn: 3600 });
-        const nomeParaDownload = path.basename(arquivoEncontrado.Key);
 
+        console.log(`--- Busca no S3 finalizada com sucesso ---\n`);
         return { downloadUrl, nomeParaDownload };
     }
 
+    console.error(`ERRO: Nenhum arquivo correspondente encontrado.`);
+    console.log(`--- Busca no S3 finalizada com erro ---\n`);
     return null;
 }

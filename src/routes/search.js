@@ -14,11 +14,13 @@ export function createSearchRoutes(s3Service) {
         try {
             // A data vem como 'YYYY-MM-DD', transformamos em 'YYYY/MM/DD'
             const pastaFormatada = pasta.replace(/-/g, '/');
+
             const resultado = await s3Service.findFileAndGetSignedUrl(pastaFormatada, nomeProtocolo);
 
             if (resultado) {
                 return res.json(resultado);
             } else {
+                console.log('Arquivo não encontrado na rota.');
                 return res.status(404).json({ error: 'Arquivo não encontrado.' });
             }
         } catch (err) {
