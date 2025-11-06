@@ -1,17 +1,17 @@
+// ----------serviço de busca local---------- //
+
+import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
-import 'dotenv/config';
 
-/**
- * Lê as variáveis de ambiente (PATH_xxx, YEARS_xxx) e retorna uma lista de configurações de busca
- * para o ano fornecido.
- * @param {number} anoBusca - O ano da data que está sendo pesquisada.
- * @returns {Array<{basePath: string, searchRoots: string[], structure: 'special' | 'default'}>}
- */
- function getPathConfigsForYear(anoBusca) {
+// ----------funções de busca local---------- //
+
+// Obtém as configurações de caminho do .env para um determinado ano
+function getPathConfigsForYear(anoBusca) {
     const configs = [];
     const anoBuscaStr = anoBusca.toString();
 
+    // configura a estrutura do caminho de busca
     for (const key in process.env) {
         if (key.startsWith('YEARS_')) {
             const years = process.env[key].split(',').map(y => y.trim());
@@ -19,11 +19,12 @@ import 'dotenv/config';
                 const serverId = key.replace('YEARS_', ''); // ex: '196'
                 const pathKey = `PATH_${serverId}`;
                 const configString = process.env[pathKey];
-
+                
+                // --- Estrutura da configuração:
                 if (configString) {
                     const [basePath, subRootsString] = configString.split(',');
                     if (subRootsString) {
-                        // Estrutura especial (ex: .196)
+                        // Estrutura especial (ex: .196 que contém subpastas)
                         const searchRoots = subRootsString.split(';').map(p => path.join(basePath.trim(), p.trim()));
                         configs.push({ basePath: basePath.trim(), searchRoots, structure: 'special' });
                     } else {
@@ -36,8 +37,9 @@ import 'dotenv/config';
         }
     }
     return configs;
- }
+}
 
+// --- Lista arquivos recursivamente em um diretório ---
 function listFilesRecursively(dirPath) {
     const files = [];
     const items = fs.readdirSync(dirPath, { withFileTypes: true });
@@ -53,19 +55,21 @@ function listFilesRecursively(dirPath) {
     return files;
 }
 
-
+// ----------função principal de busca local---------- //
 export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
-    console.log('\n--- Início da requisição de busca (MOCK) ---');
+    console.log('\n--- Início da requisição de busca local ---');
     console.log(`- Data do Protocolo (pasta): ${pasta}`);
     console.log(`- Nome do Arquivo (nomeProtocolo): ${nomeProtocolo}`);
 
-    // A data vem como 'YYYY/MM/DD'. Vamos extrair o ano.
+    // A data vem como 'YYYY/MM/DD'
+    // Extraindo o ano para determinar o caminho base
     const [ano, mes, dia] = pasta.split('/');
     const anoBusca = parseInt(ano, 10);
 
     // Obtém a configuração de caminhos para o ano da busca
     const pathConfigs = getPathConfigsForYear(anoBusca);
 
+    // Validação: Verifica se há configurações para o ano solicitado
     if (!pathConfigs || pathConfigs.length === 0) {
         console.error(`Nenhuma configuração de caminho (PATH_${anoBusca}) encontrada no .env.`);
         return null;
@@ -73,15 +77,17 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
 
     // Itera sobre cada objeto de configuração (pode haver múltiplos por ano)
     for (const pathConfig of pathConfigs) {
-        // Itera sobre cada diretório de busca (seja um caminho completo ou uma subpasta)
+        // ---- Itera sobre cada raiz de busca configurada ----
         for (const searchRoot of pathConfig.searchRoots) {
             if (!fs.existsSync(searchRoot)) {
                 console.warn(`AVISO: O caminho de busca "${searchRoot}" não está acessível. Pulando...`);
                 continue;
             }
-
+            
+            // inicia a variável de prefixoPath para uso posterior
             let prefixPath;
-            // Lógica condicional para a estrutura de pastas
+
+            // --- Lógica condicional para a estrutura de pastas ---
             if (pathConfig.structure === 'special') {
                 // Estrutura especial: YYYY/MM/DD (com zeros)
                 prefixPath = path.join(ano, mes, dia);
@@ -91,22 +97,30 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
                 const diaSemZero = parseInt(dia, 10).toString();
                 prefixPath = path.join(ano, mesSemZero, diaSemZero);
             }
-
+            
+            // anexa o prefixPath ao searchRoot para formar o caminho completo
             const fullPath = path.join(searchRoot, prefixPath);
 
-            console.log(`Buscando no diretório: ${fullPath}`);
+            console.log(`\nBuscando no diretório: ${fullPath}`);
 
+            // Verifica se o diretório existe antes de listar arquivos
             if (fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory()) {
-                const allFiles = listFilesRecursively(fullPath);
-
+                
+                // armazena todos os arquivos encontrados recursivamente
+                const allFiles = listFilesRecursively(fullPath);   
+                
+                // Constrói um array de objetos no formato { Key: 'caminho/relativo/arquivo.ext' }
+                // será usado para simular a busca similar ao S3
                 const relativeBasePath = pathConfig.basePath || searchRoot;
-
+                
+                // mapeia os arquivos para o formato esperado
                 const contents = allFiles.map(filePath => {
                     const relativePath = path.relative(relativeBasePath, filePath);
-                    const s3Key = relativePath.replace(/\\/g, '/');
-                    return { Key: s3Key };
+                    const pathKey = relativePath.replace(/\\/g, '/');
+                    return { Key: pathKey };
                 });
 
+                // Tenta encontrar o arquivo correspondente na lista
                 const arquivoEncontrado = contents.find(obj => {
                     // Normaliza para minúsculas para uma comparação case-insensitive
                     const nomeBaseNaChave = path.parse(obj.Key).name.toLowerCase(); // Nome do arquivo no disco, sem extensão

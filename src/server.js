@@ -1,23 +1,13 @@
 import { createApp } from './app.js';
 import 'dotenv/config';
 
+// Função para iniciar o servidor
 async function startServer() {
-    const isDevelopment = process.env.NODE_ENV === 'local-server';
-    let s3Service;
+    console.log('Iniciando servidor com serviço de busca unificado (S3 com fallback local)...');
+    // Importa o serviço unificado que orquestra as buscas
+    const searchableService = await import('./services/unifiedSearchService.js');
 
-    if (isDevelopment) {
-        console.log('Iniciando em modo de busca local...');
-        // Importa o serviço mock dinamicamente
-        const mockService = await import('./services/s3Service.mock.js');
-        s3Service = mockService;
-    } else {
-        console.log('Iniciando em modo de busca no S3-bucket...');
-        // Importa o serviço real dinamicamente
-        const realService = await import('./services/s3Service.js');
-        s3Service = realService;
-    }
-
-    const app = createApp(s3Service);
+    const app = createApp(searchableService);
     const port = process.env.PORT || 80;
     const host = '0.0.0.0';
 

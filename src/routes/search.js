@@ -1,9 +1,14 @@
+// ----------arquivo de rotas da API de busca---------- //
+
 import { Router } from 'express';
 import path from 'path';
 
-export function createSearchRoutes(s3Service) {
+// ----------função para criar as rotas de busca---------- //
+export function createSearchRoutes(searchableService) {
     const router = Router();
 
+    // Rota para buscar um arquivo com base na pasta (data) 
+    // e nome do protocolo (arquivo)
     router.post('/buscar-arquivo', async (req, res) => {
         const { pasta, nomeProtocolo } = req.body;
 
@@ -12,10 +17,11 @@ export function createSearchRoutes(s3Service) {
         }
 
         try {
-            // A data vem como 'YYYY-MM-DD', transformamos em 'YYYY/MM/DD'
+            // A data vem como 'YYYY-MM-DD'
+            // transformando em 'YYYY/MM/DD'
             const pastaFormatada = pasta.replace(/-/g, '/');
 
-            const resultado = await s3Service.findFileAndGetSignedUrl(pastaFormatada, nomeProtocolo);
+            const resultado = await searchableService.findFileAndGetSignedUrl(pastaFormatada, nomeProtocolo);
 
             if (resultado) {
                 return res.json(resultado);
@@ -29,5 +35,6 @@ export function createSearchRoutes(s3Service) {
         }
     });
 
+    // Retorna o router configurado (neste caso apenas router.post)
     return router;
 }

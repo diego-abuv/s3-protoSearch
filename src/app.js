@@ -1,3 +1,5 @@
+// ----- arquivo de configuração do app Express ----- //
+
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -7,7 +9,7 @@ import { createSearchRoutes } from './routes/search.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export function createApp(s3Service) {
+export function createApp(searchableService) {
     const app = express();
 
     app.use(express.json());
@@ -16,13 +18,10 @@ export function createApp(s3Service) {
     app.use(express.static(path.resolve(__dirname, '..', 'public')));
 
     // Configuração específica para o modo MOCK
-    if (process.env.NODE_ENV === 'local-server') {
-        console.log("Modo de busca local: rota de download ativada.");
+    if (process.env.NODE_ENV === 'busca-ligacoes') {
+        console.log("Busca local: rota de download ativada.");
 
-        /**
-         * Retorna uma lista de todos os caminhos base configurados nas variáveis PATH_.
-         * @returns {string[]}
-         */
+        // Função para obter todos os caminhos base configurados no .env
         const getAllBasePaths = () => {
             const paths = [];
             for (const key in process.env) {
@@ -63,8 +62,7 @@ export function createApp(s3Service) {
         });
     }
 
-    // Injeta o serviço (real ou mock) nas rotas
-    const searchRoutes = createSearchRoutes(s3Service);
+    const searchRoutes = createSearchRoutes(searchableService);
     app.use(searchRoutes);
 
     return app;
