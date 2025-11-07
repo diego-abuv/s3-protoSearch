@@ -36,12 +36,25 @@ form.addEventListener('submit', async (event) => {
 
         const data = await response.json();
 
-        if (response.ok) {
-            resultadoDiv.innerHTML = `<div class="alert alert-success"><p class="mb-2">Arquivo encontrado!</p><a href="${data.downloadUrl}" download="${data.nomeParaDownload}" class="btn btn-success">Baixar ${data.nomeParaDownload}</a></div>`;
-        } else {
-            resultadoDiv.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
-        }
+            if (response.ok) {
+                
+                let htmlContent = '<div class="alert alert-success"><p class="mb-2">Arquivos encontrados!</p>';
 
+                data.forEach(arquivo => { 
+                    
+                    htmlContent += `
+                        <a href="${arquivo.downloadUrl}" 
+                        download="${arquivo.nomeParaDownload}" 
+                        class="btn btn-success me-2 mb-2">
+                            Baixar ${arquivo.nomeParaDownload}
+                        </a>
+                    `;
+                });
+                
+                htmlContent += '</div>';
+
+                resultadoDiv.innerHTML = htmlContent;
+            }
     } catch (error) {
         console.error('Erro na requisição:', error);
         resultadoDiv.innerHTML = '<div class="alert alert-danger">Erro ao conectar com o servidor.</div>';

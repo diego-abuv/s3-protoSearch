@@ -120,24 +120,34 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
                     return { Key: pathKey };
                 });
 
-                // Tenta encontrar o arquivo correspondente na lista
-                const arquivoEncontrado = contents.find(obj => {
-                    // Normaliza para minúsculas para uma comparação case-insensitive
-                    const nomeBaseNaChave = path.parse(obj.Key).name.toLowerCase(); // Nome do arquivo no disco, sem extensão
-                    const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase(); // Nome do arquivo buscado, também sem extensão
+                const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase();
+
+                const arquivosEncontrados = contents.filter(obj => {
+                    
+                    const nomeBaseNaChave = path.parse(obj.Key).name.toLowerCase();
+                    
                     return nomeBaseNaChave.includes(termoBuscado);
                 });
 
-                if (arquivoEncontrado) {
-                    console.log(`Arquivo encontrado! Chave completa: ${arquivoEncontrado.Key}`);
-                    const caminhoCompletoDoArquivo = path.join(relativeBasePath, arquivoEncontrado.Key.replace(/\//g, path.sep));
-                    const nomeParaDownload = path.basename(arquivoEncontrado.Key);
-                    const downloadUrl = `/download-local?file=${encodeURIComponent(caminhoCompletoDoArquivo)}`;
+                if (arquivosEncontrados.length > 0) {
+                    
+                    const resultados = arquivosEncontrados.map(obj => {
 
-                    console.log(`Arquivo físico em: ${caminhoCompletoDoArquivo}`);
-                    console.log(`URL de download para o novo endpoint: ${downloadUrl}`);
+                        console.log(`Arquivo encontrado! Chave completa: ${obj.Key}`);
+                        
+                        const caminhoCompletoDoArquivo = path.join(relativeBasePath, obj.Key.replace(/\//g, path.sep));
+                        const nomeParaDownload = path.basename(obj.Key);
+                        const downloadUrl = `/download-local?file=${encodeURIComponent(caminhoCompletoDoArquivo)}`;
+
+                        console.log(`Arquivo físico em: ${caminhoCompletoDoArquivo}`);
+                        console.log(`URL de download para o novo endpoint: ${downloadUrl}`);
+                        
+                        return { downloadUrl, nomeParaDownload };
+                    });
+
                     console.log('--- Requisição finalizada com sucesso ---\n');
-                    return { downloadUrl, nomeParaDownload };
+                    
+                    return resultados;
                 }
             }
         }
