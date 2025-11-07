@@ -120,8 +120,12 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
                     return { Key: pathKey };
                 });
 
+
+                // ------- Busca o arquivo e retorna um array de resultados ------- //
+
                 const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase();
 
+                // filtra os arquivos que correspondem ao termo buscado
                 const arquivosEncontrados = contents.filter(obj => {
                     
                     const nomeBaseNaChave = path.parse(obj.Key).name.toLowerCase();
@@ -129,24 +133,33 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
                     return nomeBaseNaChave.includes(termoBuscado);
                 });
 
+                // listagem dos arquivos se encontrar ao menos um
                 if (arquivosEncontrados.length > 0) {
                     
+                    // armazena os os objetos encontrados pelo .map na variavel como array
                     const resultados = arquivosEncontrados.map(obj => {
-
+                        
+                        // Log do arquivo encontrado passando a chave completa do objeto atual
                         console.log(`Arquivo encontrado! Chave completa: ${obj.Key}`);
                         
+                        // Constrói o caminho completo do arquivo no sistema de arquivos
+                        // e a URL de download para o endpoint local disponibilizar o arquivo
                         const caminhoCompletoDoArquivo = path.join(relativeBasePath, obj.Key.replace(/\//g, path.sep));
                         const nomeParaDownload = path.basename(obj.Key);
                         const downloadUrl = `/download-local?file=${encodeURIComponent(caminhoCompletoDoArquivo)}`;
 
+                        // Log dos detalhes do arquivo encontrado
                         console.log(`Arquivo físico em: ${caminhoCompletoDoArquivo}`);
                         console.log(`URL de download para o novo endpoint: ${downloadUrl}`);
                         
+                        // Retorna o objeto no formato esperado pela API
                         return { downloadUrl, nomeParaDownload };
                     });
 
+
                     console.log('--- Requisição finalizada com sucesso ---\n');
                     
+                    // retorna o array com os objetos encontrados no mapping
                     return resultados;
                 }
             }

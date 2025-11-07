@@ -32,70 +32,76 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
     console.log(`- Prefixo (pasta): ${prefixoBusca}`);
     console.log(`- Termo de busca (nome do arquivo): ${nomeProtocolo}`);
 
-    // -------- Paginação otimizada para busca do arquivo -------- //
+    // Define o termo de busca uma vez fora do loop para otimização
+    const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase();
 
-    // isTruncated indica que há mais de uma página de resultados
-    let isTruncated = true;
-    // continuationToken armazena o token para a próxima página
-    let continuationToken;
-    // variavel para armazenar o arquivo quando for encontrado
-    let arquivoEncontrado = null;
+    // -------- Paginação para coletar TODOS os arquivos correspondentes -------- //
+    let isTruncated = true; // Indica se há mais páginas para buscar
+    let continuationToken; // Token para a próxima página
+    // Array para acumular todos os arquivos encontrados em todas as páginas.
+    const todosOsArquivosEncontrados = [];
 
-    // enquanto houver páginas e o arquivo não for encontrado, continua buscando.
-    while (isTruncated) {
-        // inicia objeto de listagem com os parâmetros necessários
-        // (nome do bucket, prefixo e token de continuação se houver)
+    // O loop continua enquanto houver mais páginas de resultados a serem buscadas.
+    while (isTruncated ) {
         const listCommand = new ListObjectsV2Command({
             Bucket: bucketName,
             Prefix: prefixoBusca,
             ContinuationToken: continuationToken,
         });
         
-        // inicia a lista de objetos (página atual) e armazena na variável
+        // Executa o comando de listagem no S3
         const listResponse = await s3Client.send(listCommand);
         
-        // se houver itens na pagina recebida, processa e tenta encontrar o arquivo
+        // condição que verifica se há objetos na resposta e faz a busca
         if (listResponse.Contents) {
             console.log(`- Verificando ${listResponse.Contents.length} objetos nesta página...`);
             
-            // Tenta encontrar o arquivo no lote atual de objetos
-            const encontradoNaPagina = listResponse.Contents.find(obj => {
-                const nomeBaseNaChave = path.parse(obj.Key).name.toLowerCase();
-                const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase();
-                return nomeBaseNaChave.includes(termoBuscado);
+            // ---- Filtra todos os arquivos na página atual que correspondem ao termo buscado. ---- //
+            const encontradosNestaPagina = listResponse.Contents.filter(obj => {
+                const nomeBaseNaChave = path.parse(obj.Key).name.toLowerCase(); // extrai o nome base do arquivo
+                return nomeBaseNaChave.includes(termoBuscado); // compara o nome do arquivo e compara com o termo buscado
             });
 
-            if (encontradoNaPagina) {
-                console.log(`- Arquivo correspondente encontrado: ${encontradoNaPagina.Key}`);
-                arquivoEncontrado = encontradoNaPagina;
-                break; // Sai do loop while, pois já encontramos o que queríamos.
+            // Se encontramos arquivos, adicionamos ao nosso array acumulador.
+            if (encontradosNestaPagina.length > 0) {
+                console.log(`- Encontrados ${encontradosNestaPagina.length} arquivo(s) correspondente(s) nesta página.`);
+                todosOsArquivosEncontrados.push(...encontradosNestaPagina);
+                // Interrompe o loop while, pois já encontramos o que precisávamos.
+                break;
             }
         }
-
-        // Atualiza isTruncated e continuationToken para a próxima iteração caso não tenha encontrado o arquivo
+        
+        // Prepara para a próxima iteração, se houver mais páginas.
         isTruncated = !!listResponse.IsTruncated;
         if (isTruncated) {
             continuationToken = listResponse.NextContinuationToken;
-            console.log('- Arquivo não encontrado nesta página, buscando próxima...');
+            console.log('- Buscando próxima página de resultados...');
         }
     }
 
-    // -------- Gerar URL assinada se o arquivo foi encontrado ------ //
-    if (arquivoEncontrado) {
-        const nomeParaDownload = path.basename(arquivoEncontrado.Key);
-        const getCommand = new GetObjectCommand({
-            Bucket: bucketName,
-            Key: arquivoEncontrado.Key,
-            ResponseContentDisposition: `attachment; filename="${nomeParaDownload}"`
+    // -------- Gerar URLs assinadas para todos os arquivos encontrados ------ //
+    if (todosOsArquivosEncontrados.length > 0) {
+        console.log(`\nGerando URLs de download para ${todosOsArquivosEncontrados.length} arquivo(s) encontrado(s)...`);
+
+        // Mapeia cada arquivo encontrado para uma promessa que gera a URL assinada e armazena o nome para download
+        const resultados = todosOsArquivosEncontrados.map(obj => {
+            const nomeParaDownload = path.basename(obj.Key);
+            const getCommand = new GetObjectCommand({
+                Bucket: bucketName,
+                Key: obj.Key,
+                ResponseContentDisposition: `attachment; filename="${nomeParaDownload}"` // Força o download
+            });
+
+            return getSignedUrl(s3Client, getCommand, { expiresIn: 3600 }).then(downloadUrl => ({
+                downloadUrl,
+                nomeParaDownload
+            }));
         });
-        
-        // Gera a URL assinada com validade de 1 hora (3600 segundos)
-        const downloadUrl = await getSignedUrl(s3Client, getCommand, { expiresIn: 3600 });
 
         console.log(`--- Busca no S3 finalizada com sucesso ---\n`);
-        return { downloadUrl, nomeParaDownload };
+        // Espera todas as promessas de URL serem resolvidas e retorna o array de resultados.
+        return Promise.all(resultados);
     }
-
 
     // -------- Caso o arquivo não tenha sido encontrado ------- //
     console.error(`ERRO: Nenhum arquivo correspondente encontrado.`);

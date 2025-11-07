@@ -15,22 +15,22 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
     const s3Result = await findInS3(pasta, nomeProtocolo);
 
     if (s3Result) {
-        console.log('-> SUCESSO: Arquivo encontrado no S3. Retornando resultado.');
+        console.log('-> SUCESSO: Arquivo(os) encontrado(os) no S3. Retornando resultado.');
         return s3Result;
     }
 
     // Etapa 2: Fallback para a busca local, já que não foi encontrado no S3
     // usa o localSearchService.js
-    console.log('2. Arquivo não encontrado no S3. Tentando busca local (fallback)...');
+    console.log('2. Arquivo(os) não encontrado(os) no S3. Tentando busca local (fallback)...');
     const localResult = await findLocally(pasta, nomeProtocolo);
 
     if (localResult) {
-        console.log('-> SUCESSO: Arquivo encontrado localmente. Retornando resultado.');
+        console.log('-> SUCESSO: Arquivo(os) encontrado(os) localmente. Retornando resultado.');
         return localResult;
     }
 
     // Nenhum dos dois serviços encontrou o arquivo
-    console.log('-> FALHA: Arquivo não encontrado no S3 nem localmente.');
+    console.log('-> FALHA: Arquivo(os) não encontrado(os) no S3 nem localmente.');
     console.log('--- BUSCA FINALIZADA ---');
     return null;
 }
