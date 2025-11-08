@@ -1,18 +1,19 @@
 module.exports = {
   apps: [
     {
-      name: 'buscador-unificado',
+      name: 'Serviço Buscador',
       script: 'src/server.js',
       args: 'start',
       interpreter: 'node',
       instances: 1,
       autorestart: true,
       watch: false,
-      // O NODE_ENV ainda pode ser útil para outras lógicas,
-      // como ativar a rota de download local em app.js.
+
       env: {
+        // O NODE_ENV é útil para ativar a rota de download local em app.js.
         NODE_ENV: 'busca-ligacoes',
-        PORT: 80
+        // PORT deve ser configurada no .env 
+        PORT: process.env.PORT || 80
       },
     },
   ],

@@ -54,6 +54,9 @@ form.addEventListener('submit', async (event) => {
                 htmlContent += '</div>';
 
                 resultadoDiv.innerHTML = htmlContent;
+            } else {
+                // exibe mensagem de arquivo não encontrado
+                resultadoDiv.innerHTML = '<div class="alert alert-danger"><p class="mb-2">Infelizmente não encontramos nenhum arquivo.</p><p class="mb-2">Busca realizada nos servidores Locais e na nuvem do S3.</p></div>';
             }
     } catch (error) {
         console.error('Erro na requisição:', error);

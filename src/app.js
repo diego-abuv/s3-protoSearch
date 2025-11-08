@@ -17,7 +17,7 @@ export function createApp(searchableService) {
     // Servir arquivos estáticos da pasta 'public'
     app.use(express.static(path.resolve(__dirname, '..', 'public')));
 
-    // Configuração específica para o modo MOCK
+    // Configuração específica para o modo pesquisa local
     if (process.env.NODE_ENV === 'busca-ligacoes') {
         console.log("Busca local: rota de download ativada.");
 
