@@ -12,99 +12,146 @@ const s3Client = new S3Client({
     },
 });
 
-// Validação para nome do bucket correto (rota do arquivo sem prefixos ou barras extras)
-const rawBucketName = process.env.AWS_BUCKET_NAME || '';
-const bucketName = rawBucketName.replace(/s3:\/\/|\//g, '');
+// ---------- estruturando nome do bucket ---------- //
+const rawBucketName = process.env.AWS_BUCKET_NAME || ''; // extrai nome do bucket do .env, pode ser no formato "s3://meu-bucket" ou "meu-bucket"
+const bucketName = rawBucketName.replace(/s3:\/\/|\//g, ''); // remove "s3://" e quaisquer barras, deixando apenas o nome limpo do bucket
 
-// ----------funções de busca no s3---------- //
 
-// Busca um arquivo no S3 e retorna uma URL assinada para download
+// ---------- gera variações de prefixo ---------- //
+
+function generatePrefixes(ano, mes, dia) {
+
+    const m = Number(mes); 
+    const d = Number(dia);
+
+    const m2 = String(m).padStart(2, '0'); // caso tenha um mês com zero à esquerda, garante que a versão sem zero também seja testada
+    const d2 = String(d).padStart(2, '0'); // mesma lógica para o dia
+    
+    return [
+      `${ano}/${m}/${d}/`,
+      `${ano}/${m}/${d2}/`,
+      `${ano}/${m2}/${d2}/`,
+      `${ano}/${m2}/${d}/`
+    ];
+}
+
+
+// ---------- busca no s3 ---------- //
+
+// Função principal que busca o arquivo no S3 e retorna URLs de download assinadas
 export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
-    // O serviço recebe a pasta como 'YYYY/MM/DD' do frontend.
-    // Para o S3, formatamos para 'YYYY/M/D' (sem zeros à esquerda no mês e dia).
-    const [ano, mes, dia] = pasta.split('/');
-    const mesSemZero = parseInt(mes, 10).toString();
-    const diaSemZero = parseInt(dia, 10).toString();
-    const prefixoBusca = `${ano}/${mesSemZero}/${diaSemZero}`;
 
-    console.log(`\n--- Iniciando busca no S3 ---`);
-    console.log(`- Bucket: ${bucketName}`);
-    console.log(`- Prefixo (pasta): ${prefixoBusca}`);
-    console.log(`- Termo de busca (nome do arquivo): ${nomeProtocolo}`);
+    const [ano, mes, dia] = pasta.split('/'); // extrai ano, mês e dia da pasta para gerar os prefixos de busca (informado pelo frontend)
 
-    // Define o termo de busca uma vez fora do loop para otimização
-    const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase();
+    const prefixes = generatePrefixes(ano, mes, dia); // armazena as variações de prefixo a serem testadas no S3
 
-    // -------- Paginação para coletar TODOS os arquivos correspondentes -------- //
-    let isTruncated = true; // Indica se há mais páginas para buscar
-    let continuationToken; // Token para a próxima página
-    // Array para acumular todos os arquivos encontrados em todas as páginas.
-    const todosOsArquivosEncontrados = [];
+    const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase(); // extrai o nome base do protocolo (sem extensão) e converte para minúsculas para comparação mais flexível
 
-    // O loop continua enquanto houver mais páginas de resultados a serem buscadas.
-    while (isTruncated ) {
-        const listCommand = new ListObjectsV2Command({
-            Bucket: bucketName,
-            Prefix: prefixoBusca,
-            ContinuationToken: continuationToken,
-        });
-        
-        // Executa o comando de listagem no S3
-        const listResponse = await s3Client.send(listCommand);
-        
-        // condição que verifica se há objetos na resposta e faz a busca
-        if (listResponse.Contents) {
-            console.log(`- Verificando ${listResponse.Contents.length} objetos nesta página...`);
-            
-            // ---- Filtra todos os arquivos na página atual que correspondem ao termo buscado. ---- //
-            const encontradosNestaPagina = listResponse.Contents.filter(obj => {
-                const nomeBaseNaChave = path.parse(obj.Key).name.toLowerCase(); // extrai o nome base do arquivo
-                return nomeBaseNaChave.includes(termoBuscado); // compara o nome do arquivo e compara com o termo buscado
+    console.log("\n--- Busca S3 iniciada ---");
+    console.log("Bucket:", bucketName);
+    console.log("Termo:", termoBuscado);
+    console.log("Prefixos:", prefixes);
+
+    const arquivosEncontrados = [];
+
+    for (const prefixoBusca of prefixes) {
+
+        console.log(`Testando prefixo: ${prefixoBusca}`);
+
+        // Variáveis para controle de paginação (1000 objetos por página)
+        let continuationToken = undefined;
+        let isTruncated = true;
+
+        // enquanto houver mais páginas de resultados, continua buscando
+        while (isTruncated) {
+
+            // utiliza listObjectsV2
+            const listCommand = new ListObjectsV2Command({
+                Bucket: bucketName,
+                Prefix: prefixoBusca,
+                ContinuationToken: continuationToken, // token para próxima página, começa com undefined para a primeira página
+                MaxKeys: 1000 // limite máximo de objetos por página
             });
 
-            // Se encontramos arquivos, adicionamos ao nosso array acumulador.
-            if (encontradosNestaPagina.length > 0) {
-                console.log(`- Encontrados ${encontradosNestaPagina.length} arquivo(s) correspondente(s) nesta página.`);
-                todosOsArquivosEncontrados.push(...encontradosNestaPagina);
-                // Interrompe o loop while, pois já encontramos o que precisávamos.
-                break;
+            // executa a busca e armazena a resposta em listResponse
+            const listResponse = await s3Client.send(listCommand);
+
+            if (listResponse.Contents) {
+                 // armazen os objetos encontrados na página atual (obtida por meio da listResponse)
+                const encontrados = listResponse.Contents.filter(obj => { // filtra os objetos retornados para armazenar somente os que correspondem ao termo buscado
+                    // extrai o nome base do objeto (sem extensão) e converte para minúsculas para comparação
+                    const nomeBase = path.parse(obj.Key).name.toLowerCase();
+                    // compara se o nome do objeto inclui o termo buscado retornando true ou false no filter 
+                    return nomeBase.includes(termoBuscado);
+
+                });
+
+                // se algum objeto correspondente for encontrado, armazena no array arquivosEncontrados e interrompe a busca por outros prefixos
+                if (encontrados.length > 0) {
+
+                    console.log(`Encontrados ${encontrados.length} arquivo(s)`);
+
+                    arquivosEncontrados.push(...encontrados);
+
+                    break;
+                }
+
             }
+
+            // define o valor de isTruncated para controlar o loop de paginação = true se houver mais páginas, false se for a última página
+            isTruncated = !!listResponse.IsTruncated;
+            continuationToken = listResponse.NextContinuationToken; // atualiza o token para a próxima página, se houver mais resultados
         }
-        
-        // Prepara para a próxima iteração, se houver mais páginas.
-        isTruncated = !!listResponse.IsTruncated;
-        if (isTruncated) {
-            continuationToken = listResponse.NextContinuationToken;
-            console.log('- Buscando próxima página de resultados...');
-        }
+        // se encontrar ao menos um arquivo, interrompe a busca por outros prefixos, assumindo que o(os) arquivo(s) estão na pagina atual
+        if (arquivosEncontrados.length > 0) break;
+
     }
 
-    // -------- Gerar URLs assinadas para todos os arquivos encontrados ------ //
-    if (todosOsArquivosEncontrados.length > 0) {
-        console.log(`\nGerando URLs de download para ${todosOsArquivosEncontrados.length} arquivo(s) encontrado(s)...`);
+    // se nenhum arquivo for encontrado após testar todos os prefixos, retorna null
+    if (arquivosEncontrados.length === 0) {
 
-        // Mapeia cada arquivo encontrado para uma promessa que gera a URL assinada e armazena o nome para download
-        const resultados = todosOsArquivosEncontrados.map(obj => {
+        console.log("Nenhum arquivo encontrado.");
+        return null;
+
+    }
+
+    // se arquivos forem encontrados, gera URLs de download assinadas para cada um deles
+    console.log(`Gerando URLs para ${arquivosEncontrados.length} arquivos`);
+
+    // a promise.all é utilizada para processar todas as requisições de geração de URL de forma concorrente, melhorando a performance quando há múltiplos arquivos encontrados 
+    const resultados = await Promise.all(
+    
+        arquivosEncontrados.map(async (obj) => {
+
             const nomeParaDownload = path.basename(obj.Key);
+
+            // o getCommand é configurado para obter o objeto específico do S3, incluindo um header para sugerir o nome do arquivo no download
             const getCommand = new GetObjectCommand({
                 Bucket: bucketName,
                 Key: obj.Key,
-                ResponseContentDisposition: `attachment; filename="${nomeParaDownload}"` // Força o download
+                ResponseContentDisposition: `attachment; filename="${nomeParaDownload}"`
             });
 
-            return getSignedUrl(s3Client, getCommand, { expiresIn: 3600 }).then(downloadUrl => ({
+            // configuração da url de download
+            const downloadUrl = await getSignedUrl(
+                s3Client,
+                getCommand,
+                { expiresIn: 3600 }
+            );
+
+            // retorna o objeto contendo a URL de download e o nome do arquivo para download, que será utilizado pelo frontend para iniciar o download do arquivo encontrado no S3
+            return {
                 downloadUrl,
                 nomeParaDownload
-            }));
-        });
+            };
 
-        console.log(`--- Busca no S3 finalizada com sucesso ---\n`);
-        // Espera todas as promessas de URL serem resolvidas e retorna o array de resultados.
-        return Promise.all(resultados);
-    }
+        })
 
-    // -------- Caso o arquivo não tenha sido encontrado ------- //
-    console.error(`ERRO: Nenhum arquivo correspondente encontrado.`);
-    console.log(`--- Busca no S3 finalizada com erro ---\n`);
-    return null;
+    );
+
+    console.log("--- Busca finalizada ---\n");
+
+    // retorna todo o array de obj que passaram pela promise e mapeamento
+    return resultados;
+
 }

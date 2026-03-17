@@ -9,7 +9,7 @@ async function startServer() {
 
     const app = createApp(searchableService);
     const port = process.env.PORT || 80;
-    const host = '127.0.0.1';
+    const host = '0.0.0.0'; // Permite acesso de qualquer IP na rede local
 
     app.listen(port, host, () => {
         console.log(`Servidor rodando em http://${host}:${port}, acessível na rede local.`);
