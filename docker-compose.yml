@@ -1,0 +1,13 @@
+services:
+  s3-localsearch:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: s3-protosearch
+    restart: always
+    ports:
+      - "80:80"
+    env_file:
+      - .env
+    volumes:
+      - /sharepoint:/sharepoint:ro
