@@ -25,10 +25,8 @@ Embora seja o foco, a aplicação pode ser executada em qualquer ambiente que su
 
 A configuração é feita através de um arquivo `.env` na raiz do projeto. Voce deve preencher as variáveis conforme o exemplo tendo como base a sua infraestrutura.
 
-## 🛠️ Configuração do Ambiente (.env)O sistema utiliza variáveis de ambiente para definir o comportamento da busca e as credenciais de acesso. 
-```bash
-# Exemplo de configuração .env
-```
+## 🛠️ Configuração do Ambiente (.env) 
+O sistema utiliza variáveis de ambiente para definir o comportamento da busca e as credenciais de acesso. 
 
 ### Exemplo de Arquivo .env
 ```bash
@@ -73,6 +71,7 @@ PATH_196=/sharepoint/192-168-0-196
 # Mapeamento de Anos por ID (Anos quais o path com mesmo sufixo estão configurados)
 YEARS_196=2023,2024
 YEARS_254=2021,2022```
+```
 
 ### Detalhes da Busca Local
 
