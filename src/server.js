@@ -1,19 +1,17 @@
 import { createApp } from './app.js';
 import 'dotenv/config';
 
-// Função para iniciar o servidor
 async function startServer() {
-    console.log('Iniciando servidor com serviço de busca unificado (S3 com fallback local)...');
-    // Importa o serviço unificado que orquestra as buscas
-    const searchableService = await import('./services/unifiedSearchService.js');
+  console.log('Iniciando servidor com serviço de busca unificado (S3 com fallback local)...');
+  const searchableService = await import('./services/unifiedSearchService.js');
 
-    const app = createApp(searchableService);
-    const port = process.env.PORT || 80;
-    const host = '0.0.0.0'; // Permite acesso de qualquer IP na rede local
+  const app = createApp(searchableService);
+  const port = process.env.PORT || 80;
+  const host = '0.0.0.0';
 
-    app.listen(port, host, () => {
-        console.log(`Servidor rodando em http://${host}:${port}, acessível na rede local.`);
-    });
+  app.listen(port, host, () => {
+    console.log(`Servidor rodando em http://${host}:${port}, acessível na rede local.`);
+  });
 }
 
 startServer();
