@@ -5,6 +5,7 @@
   <img src="https://img.shields.io/badge/AWS%20S3-Integrado-orange?style=for-the-badge&logo=amazons3" alt="AWS S3">
   <img src="https://img.shields.io/badge/Docker-Ready-blue?style=for-the-badge&logo=docker" alt="Docker">
   <img src="https://img.shields.io/badge/Status-Produ%C3%A7%C3%A3o-brightgreen?style=for-the-badge" alt="Status">
+  <img src="https://img.shields.io/badge/S3-KeepAlive-blueviolet?style=for-the-badge&logo=amazons3" alt="S3 KeepAlive">
 </p>
 
 Aplicação web para busca unificada de arquivos de protocolo (gravações de áudio, documentos) armazenados em **AWS S3** ou **pastas de rede internas**. Desenvolvida para ambientes corporativos com servidores de call-center legados e armazenamento em nuvem híbrido.
@@ -15,25 +16,28 @@ Aplicação web para busca unificada de arquivos de protocolo (gravações de á
 
 ## 🚀 Funcionalidades
 
-* **Interface Web**: Formulário simples com data e nome do arquivo, resultados com links de download diretos.
-* **Busca Unificada**: Primeiro tenta no S3; se não encontrar (ou houver falha de conexão), busca nos servidores locais.
-* **URLs Assinadas (S3)**: Links temporários de 1 hora — sem expor as credenciais da AWS.
-* **Download Local Protegido**: Endpoint com validação de path para impedir acesso fora dos diretórios configurados.
-* **Diagnóstico Detalhado**: Resposta da API informa individualmente o status de cada fonte (`ok`, `nao_encontrado`, `erro: <motivo>`).
-* **Resiliência**: Falha de rede no S3 não quebra o fluxo — o fallback local é executado mesmo com erro.
-* **Configuração Flexível**: Múltiplos servidores e estruturas de diretório via `.env`.
-* **Docker + PM2**: Suporte a container e gerenciamento de processo com auto-restart.
+- **Interface Web**: Formulário simples com data e nome do arquivo, resultados com links de download diretos.
+- **Busca Unificada**: Primeiro tenta no S3; se não encontrar (ou houver falha de conexão), busca nos servidores locais.
+- **URLs Assinadas (S3)**: Links temporários de 1 hora — sem expor as credenciais da AWS.
+- **Download Local Protegido**: Endpoint com validação de path para impedir acesso fora dos diretórios configurados.
+- **Diagnóstico Detalhado**: Resposta da API informa individualmente o status de cada fonte (`ok`, `nao_encontrado`, `erro: <motivo>`).
+- **Resiliência**: Falha de rede no S3 não quebra o fluxo — o fallback local é executado mesmo com erro.
+- **Configuração Flexível**: Múltiplos servidores e estruturas de diretório via `.env`.
+- **Keep-Alive nas conexões S3**: Reuso de sockets com pool de 25 conexões, evitando exaustão de portas efêmeras.
+- **Deduplicação de prefixos**: Prefixos de data redundantes são eliminados com `Set`, reduzindo chamadas S3.
+- **Delay entre páginas de listagem**: Pausa de 200ms entre páginas S3, evitando rajadas de conexões.
+- **Docker + PM2**: Suporte a container e gerenciamento de processo com auto-restart.
 
 ---
 
 ## 📦 Pré-requisitos
 
-| Recurso | Versão |
-| ------- | ------ |
-| Node.js | 20.x |
-| Docker | 24+ (opcional) |
-| PM2 | 5+ (opcional) |
-| Acesso | Rede interna (SMB/CIFS) + AWS S3 |
+| Recurso | Versão                           |
+| ------- | -------------------------------- |
+| Node.js | 20.x                             |
+| Docker  | 24+ (opcional)                   |
+| PM2     | 5+ (opcional)                    |
+| Acesso  | Rede interna (SMB/CIFS) + AWS S3 |
 
 ---
 
@@ -63,16 +67,16 @@ YEARS_196=2019,2020,2021
 
 ### Detalhamento das Variáveis
 
-| Variável | Obrigatório | Descrição |
-| -------- | ----------- | --------- |
-| `PORT` | Sim | Porta do servidor HTTP |
-| `NODE_ENV` | Não | `busca-ligacoes` ativa a rota de download local |
-| `AWS_ACCESS_KEY_ID` | Sim | Chave de acesso AWS |
-| `AWS_SECRET_ACCESS_KEY` | Sim | Chave secreta AWS |
-| `AWS_BUCKET_NAME` | Sim | Nome do bucket (com ou sem `s3://`) |
-| `AWS_REGION` | Sim | Região do bucket (ex: `sa-east-1`) |
-| `PATH_<ID>` | Condicional | Caminho base de busca local |
-| `YEARS_<ID>` | Condicional | Anos associados ao `PATH_<ID>` |
+| Variável                | Obrigatório | Descrição                                       |
+| ----------------------- | ----------- | ----------------------------------------------- |
+| `PORT`                  | Sim         | Porta do servidor HTTP                          |
+| `NODE_ENV`              | Não         | `busca-ligacoes` ativa a rota de download local |
+| `AWS_ACCESS_KEY_ID`     | Sim         | Chave de acesso AWS                             |
+| `AWS_SECRET_ACCESS_KEY` | Sim         | Chave secreta AWS                               |
+| `AWS_BUCKET_NAME`       | Sim         | Nome do bucket (com ou sem `s3://`)             |
+| `AWS_REGION`            | Sim         | Região do bucket (ex: `sa-east-1`)              |
+| `PATH_<ID>`             | Condicional | Caminho base de busca local                     |
+| `YEARS_<ID>`            | Condicional | Anos associados ao `PATH_<ID>`                  |
 
 ### Estruturas de Diretório Local
 
@@ -89,6 +93,7 @@ PATH_196=\\servidor\base,sub1;sub2
 ```
 
 Resulta em:
+
 ```text
 \\servidor\base\sub1\2024\05\26
 \\servidor\base\sub2\2024\05\26
@@ -131,11 +136,13 @@ s3-protoSearch/
 ### `POST /buscar-arquivo`
 
 **Request:**
+
 ```json
 { "pasta": "2024-05-26", "nomeProtocolo": "audio-12345.mp3" }
 ```
 
 **Response — Arquivo encontrado (200):**
+
 ```json
 {
   "encontrado": true,
@@ -153,6 +160,7 @@ s3-protoSearch/
 ```
 
 **Response — Não encontrado (404):**
+
 ```json
 {
   "encontrado": false,
@@ -165,6 +173,7 @@ s3-protoSearch/
 ```
 
 **Response — S3 com erro de conexão + local falhou (404):**
+
 ```json
 {
   "encontrado": false,
@@ -176,12 +185,12 @@ s3-protoSearch/
 }
 ```
 
-| Campo `status.s3` / `status.local` | Significado |
-| --------------------------------- | ----------- |
-| `ok` | Fonte consultada e arquivo encontrado |
-| `nao_encontrado` | Fonte consultada mas sem resultado |
-| `nao_consultado` | Fonte não foi consultada (a anterior já achou) |
-| `erro: <mensagem>` | Falha na consulta (rede, DNS, permissão) |
+| Campo `status.s3` / `status.local` | Significado                                    |
+| ---------------------------------- | ---------------------------------------------- |
+| `ok`                               | Fonte consultada e arquivo encontrado          |
+| `nao_encontrado`                   | Fonte consultada mas sem resultado             |
+| `nao_consultado`                   | Fonte não foi consultada (a anterior já achou) |
+| `erro: <mensagem>`                 | Falha na consulta (rede, DNS, permissão)       |
 
 ---
 
@@ -223,7 +232,38 @@ npm run format               # Formata com Prettier
 
 ---
 
+## ⚡ Otimizações de Performance (S3)
+
+### Keep-Alive e Pool de Conexões
+
+O cliente S3 utiliza `https.Agent` com `keepAlive: true` e `maxSockets: 25` — as conexões TLS são reutilizadas em vez de abertas e fechadas a cada requisição. Isso elimina o acúmulo de sockets em estado `TIME_WAIT` e previne exaustão de portas efêmeras.
+
+### Deduplicação de Prefixos
+
+A função `generatePrefixes` produz 4 variações de prefixo (`YYYY/M/D`, `YYYY/M/DD`, `YYYY/MM/DD`, `YYYY/MM/D`) e as deduplica com `new Set()`. Em dias e meses ≥ 10, apenas 1 ou 2 prefixos únicos são testados em vez de 4.
+
+### Delay entre Páginas
+
+Quando a listagem S3 retorna mais de 1000 objetos (truncada), um delay de 200ms é aplicado entre páginas para evitar rajadas de conexões simultâneas.
+
+---
+
 ## 🐧 Preparação do Container LXC
+
+### Ajustes de Rede (sysctl)
+
+Para ambientes com muitas requisições S3, configure o kernel do container para suportar mais conexões:
+
+```bash
+# Aumenta pool de portas efêmeras de ~28k para ~64k
+echo "net.ipv4.ip_local_port_range = 1024 65535" >> /etc/sysctl.conf
+
+# Reduz TIME_WAIT de 60s para 30s (portas liberadas mais rápido)
+echo "net.ipv4.tcp_fin_timeout = 30" >> /etc/sysctl.conf
+
+# Aplica as alterações
+sysctl -p
+```
 
 ### Acesso a Pastas de Rede (CIFS)
 
@@ -264,14 +304,14 @@ Certifique-se de que as portas 443 (S3), 445 (CIFS) e a porta da aplicação est
 
 ## 🛠 Estrutura do Sistema
 
-| Módulo | Tipo | Função |
-| ------ | ---- | ------ |
-| **Express** | Servidor | HTTP + rotas + arquivos estáticos |
-| **S3 Client** | SDK AWS | Listagem de objetos + geração de URLs assinadas |
-| **Local Search** | FS Node | Leitura recursiva de diretórios de rede |
-| **Unified Search** | Orquestrador | Sequência S3 → fallback local com resiliência |
-| **PM2** | Process Manager | Auto-restart + ambiente consistente |
-| **Docker** | Container | Isolamento + volumes CIFS |
+| Módulo             | Tipo            | Função                                                              |
+| ------------------ | --------------- | ------------------------------------------------------------------- |
+| **Express**        | Servidor        | HTTP + rotas + arquivos estáticos                                   |
+| **S3 Client**      | SDK AWS         | Listagem de objetos + keep-alive (pool 25 sockets) + URLs assinadas |
+| **Local Search**   | FS Node         | Leitura recursiva com detecção de caminhos inacessíveis             |
+| **Unified Search** | Orquestrador    | Sequência S3 → fallback local com resiliência                       |
+| **PM2**            | Process Manager | Auto-restart + ambiente consistente                                 |
+| **Docker**         | Container       | Isolamento + volumes CIFS                                           |
 
 ---
 
@@ -293,14 +333,14 @@ graph TD
         LOCAL --> FS[Varre diretórios CIFS]
     end
 
-    S3 --> URL1[URL assinada 1h]
-    FS --> URL2[/download-local protegido]
+    S3 --> |URL assinada 1h| URL1[keepAlive + dedup]
+    FS --> |/download-local| URL2[link protegido]
 
     URL1 --> R[Resposta JSON]
     URL2 --> R
     R --> F
 
-    R --> STATUS{{status: {s3, local}}}
+    R --> STATUS["status: {s3, local}"]
 
     style ORQ fill:#4CAF50,stroke:#333,stroke-width:2px
     style STATUS fill:#FFC107,stroke:#333,stroke-width:2px
@@ -312,13 +352,14 @@ graph TD
 
 O sistema foi projetado para **nunca retornar um erro 500 genérico sem explicação**:
 
-| Situação | Comportamento |
-| -------- | ------------- |
-| S3 caiu (DNS, timeout, firewall) | Loga o erro, executa fallback local |
-| S3 caiu + local achou | `200` com `status.s3: "erro: ..."` e `local: "ok"` |
-| Ambos consultados sem resultado | `404` com `status` individual por fonte |
-| Path de rede inacessível | Loga aviso, pula para próxima configuração |
-| Path traversal detectado | `403` negado com warn no log |
+| Situação                              | Comportamento                                      |
+| ------------------------------------- | -------------------------------------------------- |
+| S3 caiu (DNS, timeout, firewall)      | Loga o erro, executa fallback local                |
+| S3 caiu + local achou                 | `200` com `status.s3: "erro: ..."` e `local: "ok"` |
+| Ambos consultados sem resultado       | `404` com `status` individual por fonte            |
+| Path de rede inacessível              | Loga aviso, pula para próxima configuração         |
+| Todos os caminhos locais inacessíveis | Status `erro: Nenhum caminho de rede acessivel`    |
+| Path traversal detectado              | `403` negado com warn no log                       |
 
 ---
 
