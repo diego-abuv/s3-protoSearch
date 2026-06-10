@@ -1,40 +1,48 @@
-// ----------arquivo de rotas da API de busca---------- //
-
 import { Router } from 'express';
-import path from 'path';
 
-// ----------função para criar as rotas de busca---------- //
 export function createSearchRoutes(searchableService) {
-    const router = Router();
+  const router = Router();
 
-    // Rota para buscar um arquivo com base na pasta (data) 
-    // e nome do protocolo (arquivo)
-    router.post('/buscar-arquivo', async (req, res) => {
-        const { pasta, nomeProtocolo } = req.body;
+  router.post('/buscar-arquivo', async (req, res) => {
+    const { pasta, nomeProtocolo } = req.body;
 
-        if (!pasta || !nomeProtocolo) {
-            return res.status(400).json({ error: 'Data e nome do arquivo são obrigatórios.' });
-        }
+    if (!pasta || !nomeProtocolo) {
+      return res.status(400).json({
+        encontrado: false,
+        arquivos: null,
+        status: { s3: 'nao_consultado', local: 'nao_consultado' },
+        error: 'Data e nome do arquivo são obrigatórios.',
+      });
+    }
 
-        try {
-            // A data vem como 'YYYY-MM-DD'
-            // transformando em 'YYYY/MM/DD'
-            const pastaFormatada = pasta.replace(/-/g, '/');
+    try {
+      const pastaFormatada = pasta.replace(/-/g, '/');
 
-            const resultado = await searchableService.findFileAndGetSignedUrl(pastaFormatada, nomeProtocolo);
+      const resultado = await searchableService.findFileAndGetSignedUrl(pastaFormatada, nomeProtocolo);
 
-            if (resultado) {
-                return res.json(resultado);
-            } else {
-                console.log('Arquivo não encontrado na rota.');
-                return res.status(404).json({ error: 'Arquivo não encontrado.' });
-            }
-        } catch (err) {
-            console.error('Erro na busca:', err);
-            return res.status(500).json({ error: 'Ocorreu um erro no servidor.' });
-        }
-    });
+      if (resultado.arquivos && resultado.arquivos.length > 0) {
+        return res.json({
+          encontrado: true,
+          arquivos: resultado.arquivos,
+          status: resultado.status,
+        });
+      }
 
-    // Retorna o router configurado (neste caso apenas router.post)
-    return router;
+      return res.status(404).json({
+        encontrado: false,
+        arquivos: null,
+        status: resultado.status,
+      });
+    } catch (err) {
+      console.error('Erro não tratado na rota de busca:', err);
+      return res.status(500).json({
+        encontrado: false,
+        arquivos: null,
+        status: { s3: `erro: ${err.message}`, local: 'nao_consultado' },
+        error: 'Ocorreu um erro inesperado no servidor.',
+      });
+    }
+  });
+
+  return router;
 }

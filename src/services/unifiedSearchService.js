@@ -1,36 +1,48 @@
-// ----- orquestrador de busca unificada ----- //
-
-
-// importa os dois serviços de busca dos dois locais
 import { findFileAndGetSignedUrl as findInS3 } from './s3SearchService.js';
 import { findFileAndGetSignedUrl as findLocally } from './localSearchService.js';
 
-
-// ----- função principal de busca ----- //
 export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
-    console.log('\n--- INICIANDO BUSCA UNIFICADA ---');
+  console.log('\n--- INICIANDO BUSCA UNIFICADA ---');
 
-    // Etapa 1: Tentar buscar no S3 usando o s3SearchService.js
-    console.log('1. Tentando busca no S3...');
+  let s3Status;
+  let localStatus = 'nao_consultado';
+
+  console.log('1. Tentando busca no S3...');
+  try {
     const s3Result = await findInS3(pasta, nomeProtocolo);
-
     if (s3Result) {
-        console.log('-> SUCESSO: Arquivo(os) encontrado(os) no S3. Retornando resultado.');
-        return s3Result;
+      console.log('-> SUCESSO: Arquivo(os) encontrado(os) no S3.');
+      return { arquivos: s3Result, status: { s3: 'ok', local: localStatus } };
     }
+    console.log('-> S3: Nenhum arquivo encontrado.');
+    s3Status = 'nao_encontrado';
+  } catch (err) {
+    console.error('-> [ERRO] S3 indisponível ou falha de conexão:', err.message);
+    s3Status = `erro: ${err.message}`;
+  }
 
-    // Etapa 2: Fallback para a busca local, já que não foi encontrado no S3
-    // usa o localSearchService.js
-    console.log('2. Arquivo(os) não encontrado(os) no S3. Tentando busca local (fallback)...');
+  console.log('2. Tentando busca local (fallback)...');
+  try {
     const localResult = await findLocally(pasta, nomeProtocolo);
 
-    if (localResult) {
-        console.log('-> SUCESSO: Arquivo(os) encontrado(os) localmente. Retornando resultado.');
-        return localResult;
+    if (Array.isArray(localResult)) {
+      console.log('-> SUCESSO: Arquivo(os) encontrado(os) localmente.');
+      return { arquivos: localResult, status: { s3: s3Status, local: 'ok' } };
     }
 
-    // Nenhum dos dois serviços encontrou o arquivo
-    console.log('-> FALHA: Arquivo(os) não encontrado(os) no S3 nem localmente.');
-    console.log('--- BUSCA FINALIZADA ---');
-    return null;
+    if (localResult && localResult.erro) {
+      console.error('-> [ERRO] Busca local impossibilitada:', localResult.erro);
+      localStatus = `erro: ${localResult.erro}`;
+    } else {
+      console.log('-> Local: Nenhum arquivo encontrado.');
+      localStatus = 'nao_encontrado';
+    }
+  } catch (err) {
+    console.error('-> [ERRO] Busca local falhou:', err.message);
+    localStatus = `erro: ${err.message}`;
+  }
+
+  console.log('-> FALHA: Arquivo não encontrado em nenhuma fonte.');
+  console.log('--- BUSCA FINALIZADA ---');
+  return { arquivos: null, status: { s3: s3Status, local: localStatus } };
 }
