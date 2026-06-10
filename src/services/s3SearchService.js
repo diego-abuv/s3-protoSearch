@@ -1,6 +1,8 @@
 import 'dotenv/config';
 import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
+import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import https from 'https';
 import path from 'path';
 
 const s3Client = new S3Client({
@@ -9,6 +11,13 @@ const s3Client = new S3Client({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   },
+  requestHandler: new NodeHttpHandler({
+    httpsAgent: new https.Agent({
+      keepAlive: true,
+      maxSockets: 25,
+      keepAliveMsecs: 30000,
+    }),
+  }),
 });
 
 const rawBucketName = process.env.AWS_BUCKET_NAME || '';
@@ -21,7 +30,7 @@ function generatePrefixes(ano, mes, dia) {
   const m2 = String(m).padStart(2, '0');
   const d2 = String(d).padStart(2, '0');
 
-  return [`${ano}/${m}/${d}/`, `${ano}/${m}/${d2}/`, `${ano}/${m2}/${d2}/`, `${ano}/${m2}/${d}/`];
+  return [...new Set([`${ano}/${m}/${d}/`, `${ano}/${m}/${d2}/`, `${ano}/${m2}/${d2}/`, `${ano}/${m2}/${d}/`])];
 }
 
 export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
@@ -75,6 +84,10 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
 
       isTruncated = !!listResponse.IsTruncated;
       continuationToken = listResponse.NextContinuationToken;
+
+      if (isTruncated) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
     }
 
     if (arquivosEncontrados.length > 0) break;
