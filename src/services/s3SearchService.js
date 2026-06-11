@@ -4,6 +4,7 @@ import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import https from 'https';
 import path from 'path';
+import { logger } from '../utils/logger.js';
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION,
@@ -40,15 +41,15 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
 
   const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase();
 
-  console.log('\n--- Busca S3 iniciada ---');
-  console.log('Bucket:', bucketName);
-  console.log('Termo:', termoBuscado);
-  console.log('Prefixos:', prefixes);
+  logger.section('Busca S3 iniciada');
+  logger.info('Bucket:', bucketName);
+  logger.info('Termo:', termoBuscado);
+  logger.info('Prefixos:', prefixes);
 
   const arquivosEncontrados = [];
 
   for (const prefixoBusca of prefixes) {
-    console.log(`Testando prefixo: ${prefixoBusca}`);
+    logger.info(`Testando prefixo: ${prefixoBusca}`);
 
     let continuationToken = undefined;
     let isTruncated = true;
@@ -61,13 +62,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
         MaxKeys: 1000,
       });
 
-      let listResponse;
-      try {
-        listResponse = await s3Client.send(listCommand);
-      } catch (err) {
-        console.error(`[ERRO] Falha ao listar objetos no prefixo "${prefixoBusca}": ${err.message}`);
-        throw err;
-      }
+      const listResponse = await s3Client.send(listCommand);
 
       if (listResponse.Contents) {
         const encontrados = listResponse.Contents.filter((obj) => {
@@ -76,7 +71,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
         });
 
         if (encontrados.length > 0) {
-          console.log(`Encontrados ${encontrados.length} arquivo(s)`);
+          logger.success(`Encontrados ${encontrados.length} arquivo(s)`);
           arquivosEncontrados.push(...encontrados);
           break;
         }
@@ -94,11 +89,11 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
   }
 
   if (arquivosEncontrados.length === 0) {
-    console.log('Nenhum arquivo encontrado no S3.');
+    logger.info('Nenhum arquivo encontrado no S3.');
     return null;
   }
 
-  console.log(`Gerando URLs para ${arquivosEncontrados.length} arquivos`);
+  logger.info(`Gerando URLs para ${arquivosEncontrados.length} arquivos`);
 
   const resultados = await Promise.all(
     arquivosEncontrados.map(async (obj) => {
@@ -119,6 +114,6 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
     }),
   );
 
-  console.log('--- Busca S3 finalizada ---\n');
+  logger.section('Busca S3 finalizada');
   return resultados;
 }
