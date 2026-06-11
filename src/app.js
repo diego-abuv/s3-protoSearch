@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createSearchRoutes } from './routes/search.js';
+import { logger } from './utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,7 +15,7 @@ export function createApp(searchableService) {
   app.use(express.static(path.resolve(__dirname, '..', 'public')));
 
   if (process.env.NODE_ENV === 'busca-ligacoes') {
-    console.log('Busca local: rota de download ativada.');
+    logger.info('Busca local: rota de download ativada.');
 
     const getAllBasePaths = () => {
       const paths = [];
@@ -40,7 +41,7 @@ export function createApp(searchableService) {
       const isPathValid = validBasePaths.some((basePath) => filePath.startsWith(basePath));
 
       if (!isPathValid) {
-        console.warn(`Tentativa de acesso a arquivo fora de um diretório base válido: ${filePath}`);
+        logger.warn(`Tentativa de acesso a arquivo fora de um diretório base válido: ${filePath}`);
         return res.status(403).send('Acesso negado.');
       }
 

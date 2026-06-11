@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import fs from 'fs';
 import path from 'path';
+import { logger } from '../utils/logger.js';
 
 function getPathConfigsForYear(anoBusca) {
   const configs = [];
@@ -46,9 +47,9 @@ function listFilesRecursively(dirPath) {
 }
 
 export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
-  console.log('\n--- Início da requisição de busca local ---');
-  console.log(`- Data do Protocolo (pasta): ${pasta}`);
-  console.log(`- Nome do Arquivo (nomeProtocolo): ${nomeProtocolo}`);
+  logger.section('Início da requisição de busca local');
+  logger.info(`- Data do Protocolo (pasta): ${pasta}`);
+  logger.info(`- Nome do Arquivo (nomeProtocolo): ${nomeProtocolo}`);
 
   const [ano, mes, dia] = pasta.split('/');
   const anoBusca = parseInt(ano, 10);
@@ -56,7 +57,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
   const pathConfigs = getPathConfigsForYear(anoBusca);
 
   if (!pathConfigs || pathConfigs.length === 0) {
-    console.error(`Nenhuma configuração de caminho associada ao ano ${anoBusca} encontrada no .env.`);
+    logger.error(`Nenhuma configuração de caminho associada ao ano ${anoBusca} encontrada no .env.`);
     return null;
   }
 
@@ -66,11 +67,11 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
     for (const searchRoot of pathConfig.searchRoots) {
       try {
         if (!fs.existsSync(searchRoot)) {
-          console.warn(`AVISO: O caminho de busca "${searchRoot}" não está acessível. Pulando...`);
+          logger.warn(`O caminho de busca "${searchRoot}" não está acessível. Pulando...`);
           continue;
         }
       } catch (err) {
-        console.warn(`AVISO: Erro ao acessar caminho "${searchRoot}": ${err.message}. Pulando...`);
+        logger.warn(`Erro ao acessar caminho "${searchRoot}": ${err.message}. Pulando...`);
         continue;
       }
 
@@ -88,15 +89,15 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
 
       const fullPath = path.join(searchRoot, prefixPath);
 
-      console.log(`\nBuscando no diretório: ${fullPath}`);
+      logger.info(`Buscando no diretório: ${fullPath}`);
 
       try {
         if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isDirectory()) {
-          console.log(`Diretório não encontrado: ${fullPath}`);
+          logger.info(`Diretório não encontrado: ${fullPath}`);
           continue;
         }
       } catch (err) {
-        console.warn(`AVISO: Erro ao acessar diretório "${fullPath}": ${err.message}. Pulando...`);
+        logger.warn(`Erro ao acessar diretório "${fullPath}": ${err.message}. Pulando...`);
         continue;
       }
 
@@ -104,7 +105,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
       try {
         allFiles = listFilesRecursively(fullPath);
       } catch (err) {
-        console.warn(`AVISO: Erro ao listar arquivos em "${fullPath}": ${err.message}. Pulando...`);
+        logger.warn(`Erro ao listar arquivos em "${fullPath}": ${err.message}. Pulando...`);
         continue;
       }
 
@@ -125,31 +126,31 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
 
       if (arquivosEncontrados.length > 0) {
         const resultados = arquivosEncontrados.map((obj) => {
-          console.log(`Arquivo encontrado! Chave: ${obj.Key}`);
+          logger.success(`Arquivo encontrado! Chave: ${obj.Key}`);
 
           const caminhoCompletoDoArquivo = path.join(relativeBasePath, obj.Key.replace(/\//g, path.sep));
           const nomeParaDownload = path.basename(obj.Key);
           const downloadUrl = `/download-local?file=${encodeURIComponent(caminhoCompletoDoArquivo)}`;
 
-          console.log(`Arquivo físico em: ${caminhoCompletoDoArquivo}`);
-          console.log(`URL de download: ${downloadUrl}`);
+          logger.info(`Arquivo físico em: ${caminhoCompletoDoArquivo}`);
+          logger.info(`URL de download: ${downloadUrl}`);
 
           return { downloadUrl, nomeParaDownload };
         });
 
-        console.log('--- Busca local finalizada com sucesso ---\n');
+        logger.section('Busca local finalizada com sucesso');
         return resultados;
       }
     }
   }
 
   if (!algumCaminhoAcessivel) {
-    console.error('ERRO: Nenhum caminho de busca local está acessível.');
-    console.log('--- Busca local finalizada com erro ---\n');
+    logger.error('Nenhum caminho de busca local está acessível.');
+    logger.section('Busca local finalizada com erro');
     return { erro: 'Nenhum caminho de rede acessivel' };
   }
 
-  console.error('Nenhum arquivo correspondente encontrado localmente.');
-  console.log('--- Busca local finalizada ---\n');
+  logger.info('Nenhum arquivo correspondente encontrado localmente.');
+  logger.section('Busca local finalizada');
   return null;
 }

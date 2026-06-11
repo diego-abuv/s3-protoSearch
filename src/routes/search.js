@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { logger } from '../utils/logger.js';
 
 export function createSearchRoutes(searchableService) {
   const router = Router();
@@ -34,7 +35,7 @@ export function createSearchRoutes(searchableService) {
         status: resultado.status,
       });
     } catch (err) {
-      console.error('Erro não tratado na rota de busca:', err);
+      logger.error('Erro não tratado na rota de busca:', err);
       return res.status(500).json({
         encontrado: false,
         arquivos: null,
