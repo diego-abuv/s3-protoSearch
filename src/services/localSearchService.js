@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import fs from 'fs';
+import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../utils/logger.js';
 
@@ -31,14 +31,14 @@ function getPathConfigsForYear(anoBusca) {
   return configs;
 }
 
-function listFilesRecursively(dirPath) {
+async function listFilesRecursively(dirPath) {
   const files = [];
-  const items = fs.readdirSync(dirPath, { withFileTypes: true });
+  const items = await fs.readdir(dirPath, { withFileTypes: true });
 
   for (const item of items) {
     const fullPath = path.join(dirPath, item.name);
     if (item.isDirectory()) {
-      files.push(...listFilesRecursively(fullPath));
+      files.push(...(await listFilesRecursively(fullPath)));
     } else {
       files.push(fullPath);
     }
@@ -66,12 +66,9 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
   for (const pathConfig of pathConfigs) {
     for (const searchRoot of pathConfig.searchRoots) {
       try {
-        if (!fs.existsSync(searchRoot)) {
-          logger.warn(`O caminho de busca "${searchRoot}" não está acessível. Pulando...`);
-          continue;
-        }
-      } catch (err) {
-        logger.warn(`Erro ao acessar caminho "${searchRoot}": ${err.message}. Pulando...`);
+        await fs.access(searchRoot);
+      } catch {
+        logger.warn(`O caminho de busca "${searchRoot}" não está acessível. Pulando...`);
         continue;
       }
 
@@ -92,18 +89,19 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
       logger.info(`Buscando no diretório: ${fullPath}`);
 
       try {
-        if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isDirectory()) {
+        const stat = await fs.stat(fullPath);
+        if (!stat.isDirectory()) {
           logger.info(`Diretório não encontrado: ${fullPath}`);
           continue;
         }
-      } catch (err) {
-        logger.warn(`Erro ao acessar diretório "${fullPath}": ${err.message}. Pulando...`);
+      } catch {
+        logger.info(`Diretório não encontrado: ${fullPath}`);
         continue;
       }
 
       let allFiles;
       try {
-        allFiles = listFilesRecursively(fullPath);
+        allFiles = await listFilesRecursively(fullPath);
       } catch (err) {
         logger.warn(`Erro ao listar arquivos em "${fullPath}": ${err.message}. Pulando...`);
         continue;
