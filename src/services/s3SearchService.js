@@ -5,6 +5,7 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import https from 'https';
 import path from 'path';
 import { logger } from '../utils/logger.js';
+import { withRetry } from '../utils/retry.js';
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION,
@@ -62,7 +63,9 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
         MaxKeys: 1000,
       });
 
-      const listResponse = await s3Client.send(listCommand);
+      const listResponse = await withRetry(() => s3Client.send(listCommand), {
+        label: `ListObjects ${prefixoBusca}`,
+      });
 
       if (listResponse.Contents) {
         const encontrados = listResponse.Contents.filter((obj) => {
@@ -105,7 +108,9 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
         ResponseContentDisposition: `attachment; filename="${nomeParaDownload}"`,
       });
 
-      const downloadUrl = await getSignedUrl(s3Client, getCommand, { expiresIn: 3600 });
+      const downloadUrl = await withRetry(() => getSignedUrl(s3Client, getCommand, { expiresIn: 3600 }), {
+        label: 'getSignedUrl',
+      });
 
       return {
         downloadUrl,
