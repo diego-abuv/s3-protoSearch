@@ -1,19 +1,7 @@
 import { findFileAndGetSignedUrl as findInS3 } from './s3SearchService.js';
 import { findFileAndGetSignedUrl as findLocally } from './localSearchService.js';
+import { translateError } from '../utils/errorCodes.js';
 import { logger } from '../utils/logger.js';
-
-function traduzirErro(mensagem) {
-  const msg = (mensagem || '').toLowerCase();
-  if (msg.includes('eai_again')) return 'Sistema AWS indisponível no momento. Tente novamente mais tarde.';
-  if (msg.includes('enotfound')) return 'Servidor AWS não encontrado. Verifique a conexão de rede.';
-  if (msg.includes('econnrefused')) return 'Conexão recusada pelo servidor AWS. Tente novamente mais tarde.';
-  if (msg.includes('socket hang up')) return 'Conexão com AWS interrompida. Tente novamente.';
-  if (msg.includes('etimedout')) return 'Tempo de conexão com AWS esgotado. Tente novamente.';
-  if (msg.includes('enetunreach')) return 'Rede AWS inalcançável. Verifique sua conexão.';
-  if (msg.includes('nenhum caminho')) return 'Nenhum servidor local está acessível no momento.';
-  if (msg.includes('eacces') || msg.includes('eperm')) return 'Permissão negada ao acessar o servidor local.';
-  return mensagem;
-}
 
 export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
   const inicio = Date.now();
@@ -34,8 +22,8 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
     logger.info('S3: Nenhum arquivo encontrado.');
     s3Status = 'nao_encontrado';
   } catch (err) {
-    logger.error(`S3 indisponível ou falha de conexão: ${traduzirErro(err.message)}`);
-    s3Status = `erro: ${traduzirErro(err.message)}`;
+    logger.error(`S3 indisponível ou falha de conexão: ${translateError(err.message)}`);
+    s3Status = `erro: ${translateError(err.message)}`;
   }
 
   logger.info('2. Tentando busca local (fallback)...');
@@ -49,15 +37,15 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
     }
 
     if (localResult && localResult.erro) {
-      logger.error(`Busca local impossibilitada: ${traduzirErro(localResult.erro)}`);
-      localStatus = `erro: ${traduzirErro(localResult.erro)}`;
+      logger.error(`Busca local impossibilitada: ${translateError(localResult.erro)}`);
+      localStatus = `erro: ${translateError(localResult.erro)}`;
     } else {
       logger.info('Local: Nenhum arquivo encontrado.');
       localStatus = 'nao_encontrado';
     }
   } catch (err) {
-    logger.error(`Busca local falhou: ${traduzirErro(err.message)}`);
-    localStatus = `erro: ${traduzirErro(err.message)}`;
+    logger.error(`Busca local falhou: ${translateError(err.message)}`);
+    localStatus = `erro: ${translateError(err.message)}`;
   }
 
   const duracao = ((Date.now() - inicio) / 1000).toFixed(2);

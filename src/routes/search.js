@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { sanitizeError } from '../utils/errorCodes.js';
 import { logger } from '../utils/logger.js';
 
 export function createSearchRoutes(searchableService) {
@@ -39,7 +40,7 @@ export function createSearchRoutes(searchableService) {
       return res.status(500).json({
         encontrado: false,
         arquivos: null,
-        status: { s3: `erro: ${err.message}`, local: 'nao_consultado' },
+        status: { s3: `erro: ${sanitizeError(err)}`, local: 'nao_consultado' },
         error: 'Ocorreu um erro inesperado no servidor.',
       });
     }
