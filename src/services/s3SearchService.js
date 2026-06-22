@@ -71,10 +71,6 @@ async function searchPrefix(prefixo, termoBuscado) {
 
     isTruncated = !!listResponse.IsTruncated;
     continuationToken = listResponse.NextContinuationToken;
-
-    if (isTruncated) {
-      await new Promise((r) => setTimeout(r, 200));
-    }
   }
 
   return null;
