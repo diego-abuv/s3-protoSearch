@@ -14,6 +14,8 @@ const s3Client = new S3Client({
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   },
   requestHandler: new NodeHttpHandler({
+    requestTimeout: 15_000,
+    connectionTimeout: 5_000,
     httpsAgent: new https.Agent({
       keepAlive: true,
       maxSockets: 25,
@@ -35,6 +37,49 @@ function generatePrefixes(ano, mes, dia) {
   return [...new Set([`${ano}/${m}/${d}/`, `${ano}/${m}/${d2}/`, `${ano}/${m2}/${d2}/`, `${ano}/${m2}/${d}/`])];
 }
 
+async function searchPrefix(prefixo, termoBuscado) {
+  logger.info(`Testando prefixo: ${prefixo}`);
+
+  let continuationToken = undefined;
+  let isTruncated = true;
+
+  while (isTruncated) {
+    const listCommand = new ListObjectsV2Command({
+      Bucket: bucketName,
+      Prefix: prefixo,
+      ContinuationToken: continuationToken,
+      MaxKeys: 1000,
+    });
+
+    const listResponse = await withRetry(() => s3Client.send(listCommand), {
+      label: `ListObjects ${prefixo}`,
+      maxRetries: 2,
+      baseDelay: 500,
+    });
+
+    if (listResponse.Contents) {
+      const encontrados = listResponse.Contents.filter((obj) => {
+        const nomeBase = path.parse(obj.Key).name.toLowerCase();
+        return nomeBase.includes(termoBuscado);
+      });
+
+      if (encontrados.length > 0) {
+        logger.success(`Encontrados ${encontrados.length} arquivo(s) em ${prefixo}`);
+        return encontrados;
+      }
+    }
+
+    isTruncated = !!listResponse.IsTruncated;
+    continuationToken = listResponse.NextContinuationToken;
+
+    if (isTruncated) {
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+
+  return null;
+}
+
 export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
   const [ano, mes, dia] = pasta.split('/');
 
@@ -47,49 +92,14 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
   logger.info('Termo:', termoBuscado);
   logger.info('Prefixos:', prefixes);
 
-  const arquivosEncontrados = [];
+  logger.info('Buscando em todos os prefixos em paralelo...');
+  const resultadosPrefixo = await Promise.all(
+    prefixes.map((p) => searchPrefix(p, termoBuscado))
+  );
 
-  for (const prefixoBusca of prefixes) {
-    logger.info(`Testando prefixo: ${prefixoBusca}`);
-
-    let continuationToken = undefined;
-    let isTruncated = true;
-
-    while (isTruncated) {
-      const listCommand = new ListObjectsV2Command({
-        Bucket: bucketName,
-        Prefix: prefixoBusca,
-        ContinuationToken: continuationToken,
-        MaxKeys: 1000,
-      });
-
-      const listResponse = await withRetry(() => s3Client.send(listCommand), {
-        label: `ListObjects ${prefixoBusca}`,
-      });
-
-      if (listResponse.Contents) {
-        const encontrados = listResponse.Contents.filter((obj) => {
-          const nomeBase = path.parse(obj.Key).name.toLowerCase();
-          return nomeBase.includes(termoBuscado);
-        });
-
-        if (encontrados.length > 0) {
-          logger.success(`Encontrados ${encontrados.length} arquivo(s)`);
-          arquivosEncontrados.push(...encontrados);
-          break;
-        }
-      }
-
-      isTruncated = !!listResponse.IsTruncated;
-      continuationToken = listResponse.NextContinuationToken;
-
-      if (isTruncated) {
-        await new Promise((r) => setTimeout(r, 200));
-      }
-    }
-
-    if (arquivosEncontrados.length > 0) break;
-  }
+  const arquivosEncontrados = resultadosPrefixo
+    .filter((r) => r !== null)
+    .flat();
 
   if (arquivosEncontrados.length === 0) {
     logger.info('Nenhum arquivo encontrado no S3.');
@@ -110,6 +120,8 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
 
       const downloadUrl = await withRetry(() => getSignedUrl(s3Client, getCommand, { expiresIn: 3600 }), {
         label: 'getSignedUrl',
+        maxRetries: 1,
+        baseDelay: 200,
       });
 
       return {
