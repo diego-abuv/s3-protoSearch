@@ -31,14 +31,18 @@ function getPathConfigsForYear(anoBusca) {
   return configs;
 }
 
-async function listFilesRecursively(dirPath) {
+async function listFilesRecursively(dirPath, signal) {
+  if (signal?.aborted) return [];
+
   const files = [];
   const items = await fs.readdir(dirPath, { withFileTypes: true });
 
   for (const item of items) {
+    if (signal?.aborted) return [];
+
     const fullPath = path.join(dirPath, item.name);
     if (item.isDirectory()) {
-      files.push(...(await listFilesRecursively(fullPath)));
+      files.push(...(await listFilesRecursively(fullPath, signal)));
     } else {
       files.push(fullPath);
     }
@@ -86,26 +90,35 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
       const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase();
 
       logger.info(`Buscando em: ${searchRoot}`);
+      const t0 = performance.now();
+
+      const abortController = new AbortController();
+      const { signal } = abortController;
 
       const resultadosPorPrefixo = await Promise.all(
         prefixosUnicos.map(async (prefixo) => {
           const fullPath = path.join(searchRoot, prefixo);
           logger.info(`Testando caminho: ${prefixo}`);
 
+          const tStat = performance.now();
           try {
             const stat = await fs.stat(fullPath);
+            logger.info(`   [TIMING] fs.stat OK (${(performance.now() - tStat).toFixed(0)}ms)`);
             if (!stat.isDirectory()) return null;
           } catch {
+            logger.info(`   [TIMING] fs.stat ENOENT (${(performance.now() - tStat).toFixed(0)}ms)`);
             return null;
           }
 
+          const tList = performance.now();
           let allFiles;
           try {
-            allFiles = await listFilesRecursively(fullPath);
+            allFiles = await listFilesRecursively(fullPath, signal);
           } catch (err) {
-            logger.warn(`Erro ao listar "${fullPath}": ${err.message}. Pulando...`);
+            logger.warn(`   [TIMING] listFiles ERRO: ${err.message}`);
             return null;
           }
+          logger.info(`   [TIMING] listFiles: ${allFiles.length} arquivos (${(performance.now() - tList).toFixed(0)}ms)`);
 
           const arquivosEncontrados = [];
           for (const filePath of allFiles) {
@@ -119,6 +132,8 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
 
           if (arquivosEncontrados.length === 0) return null;
 
+          abortController.abort();
+
           return arquivosEncontrados.map((obj) => {
             const nomeParaDownload = path.basename(obj.Key);
             const downloadUrl = `/download-local?file=${encodeURIComponent(obj.filePath)}`;
@@ -131,6 +146,8 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
           });
         }),
       );
+
+      logger.info(`   [TIMING] Promise.all resolvido em ${(performance.now() - t0).toFixed(0)}ms`);
 
       const resultados = resultadosPorPrefixo.find(Boolean);
       if (resultados) {

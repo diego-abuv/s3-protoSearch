@@ -12,8 +12,10 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
   let localStatus = 'nao_consultado';
 
   logger.info('1. Tentando busca no S3...');
+  const tS3 = Date.now();
   try {
     const s3Result = await findInS3(pasta, nomeProtocolo);
+    logger.info(`   [TIMING] S3 retornou em ${((Date.now() - tS3) / 1000).toFixed(2)}s`);
     if (s3Result) {
       logger.success('Arquivo(os) encontrado(os) no S3.');
       logger.section(`BUSCA FINALIZADA (${((Date.now() - inicio) / 1000).toFixed(2)}s)`);
@@ -23,6 +25,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
     s3Status = 'nao_encontrado';
   } catch (err) {
     logger.error(`S3 indisponível ou falha de conexão: ${translateError(err.message)}`);
+    logger.info(`   [TIMING] S3 falhou em ${((Date.now() - tS3) / 1000).toFixed(2)}s`);
     s3Status = `erro: ${translateError(err.message)}`;
   }
 
