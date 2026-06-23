@@ -1,26 +1,28 @@
 const form = document.getElementById('formBusca');
+const resultadoDiv = document.getElementById('resultado');
+const btnBuscar = document.getElementById('btnBuscar');
+const btnText = document.getElementById('btn-text');
+const btnSpinner = document.getElementById('btn-spinner');
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   event.stopPropagation();
 
   form.classList.add('was-validated');
-
-  if (!form.checkValidity()) {
-    return;
-  }
+  if (!form.checkValidity()) return;
 
   const pasta = document.getElementById('data').value;
   const nomeProtocolo = document.getElementById('nomeProtocolo').value;
-  const resultadoDiv = document.getElementById('resultado');
-  const btnBuscar = document.getElementById('btnBuscar');
-  const btnText = document.getElementById('btn-text');
-  const btnSpinner = document.getElementById('btn-spinner');
+  const inicio = performance.now();
 
   btnBuscar.disabled = true;
   btnText.textContent = 'Buscando...';
   btnSpinner.classList.remove('d-none');
   resultadoDiv.innerHTML = '';
+
+  resultadoDiv.innerHTML = `<div class="search-progress"><div class="progress-step active"><span class="step-indicator"></span><span>Consultando servidores...</span></div></div>`;
+
+  const duracao = () => ((performance.now() - inicio) / 1000).toFixed(2);
 
   try {
     const response = await fetch('/buscar-arquivo', {
@@ -29,65 +31,115 @@ form.addEventListener('submit', async (event) => {
       body: JSON.stringify({ pasta, nomeProtocolo }),
     });
 
-    const data = await response.json();
+    const raw = await response.text();
 
-    if (response.ok && data.encontrado && data.arquivos) {
-      let htmlContent = '<div class="alert alert-success">';
-
-      const detalhesFonte = [];
-      if (data.status) {
-        if (data.status.s3 === 'ok') detalhesFonte.push('AWS S3');
-        if (data.status.local === 'ok') detalhesFonte.push('Servidor Local');
-      }
-      if (detalhesFonte.length > 0) {
-        htmlContent += `<p class="mb-2">Arquivos encontrados em: <strong>${detalhesFonte.join(' e ')}</strong></p>`;
-      } else {
-        htmlContent += '<p class="mb-2">Arquivos encontrados!</p>';
-      }
-
-      data.arquivos.forEach((arquivo) => {
-        htmlContent += `
-          <a href="${arquivo.downloadUrl}"
-          download="${arquivo.nomeParaDownload}"
-          class="btn btn-success me-2 mb-2">
-            Baixar ${arquivo.nomeParaDownload}
-          </a>
-        `;
-      });
-
-      htmlContent += '</div>';
-      resultadoDiv.innerHTML = htmlContent;
-    } else {
-      let mensagem = '<div class="alert alert-danger">';
-
-      if (data.status) {
-        mensagem += '<p class="mb-2"><strong>Detalhes da busca:</strong></p>';
-        mensagem += `<p class="mb-1">S3 (nuvem): ${formatarStatus(data.status.s3)}</p>`;
-        mensagem += `<p class="mb-2">Local (rede): ${formatarStatus(data.status.local)}</p>`;
-        mensagem += '<hr>';
-      }
-
-      mensagem += '<p class="mb-0">Nenhum arquivo encontrado com esses critérios.</p>';
-      mensagem += '</div>';
-      resultadoDiv.innerHTML = mensagem;
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (parseErr) {
+      resultadoDiv.innerHTML = `
+        <div class="result-card error">
+          <div class="d-flex align-items-start gap-3">
+            <div class="result-icon error-icon">!</div>
+            <div class="flex-grow-1 min-w-0">
+              <strong class="fs-6">Resposta inesperada do servidor</strong>
+              <p class="mb-1 text-secondary small">${parseErr.name}: ${escapeHtml(parseErr.message)} (status ${response.status})</p>
+              <pre class="mb-0 text-warning small" style="white-space:pre-wrap">${escapeHtml(raw.slice(0, 1000))}</pre>
+            </div>
+          </div>
+        </div>`;
+      return;
     }
-  } catch (error) {
-    console.error('Erro na requisição:', error);
-    resultadoDiv.innerHTML = '<div class="alert alert-danger">Erro ao conectar com o servidor.</div>';
+
+    resultadoDiv.innerHTML = buildResultHtml(data, duracao());
+  } catch (err) {
+    resultadoDiv.innerHTML = `
+      <div class="result-card error">
+        <div class="d-flex align-items-start gap-3">
+          <div class="result-icon error-icon">!</div>
+          <div class="flex-grow-1 min-w-0">
+            <strong class="fs-6">Falha na requisição</strong>
+            <p class="mb-1 text-secondary small">${err.name}: ${escapeHtml(err.message)}</p>
+          </div>
+        </div>
+      </div>`;
   } finally {
     btnBuscar.disabled = false;
-    btnText.textContent = 'Buscar Arquivo';
+    btnText.textContent = 'Buscar';
     btnSpinner.classList.add('d-none');
   }
 });
 
-function formatarStatus(status) {
-  if (status === 'ok') return '<span class="text-success">OK (encontrado)</span>';
-  if (status === 'nao_encontrado') return '<span class="text-warning">Verificado - não continha o arquivo</span>';
-  if (status === 'nao_consultado') return '<span class="text-secondary">Não consultado</span>';
-  if (status && status.startsWith('erro:')) {
-    const motivo = status.replace('erro:', '').trim();
-    return `<span class="text-danger" title="${motivo}">ERRO: ${motivo}</span>`;
+function buildResultHtml(data, duracao) {
+  const { status, arquivos } = data;
+  const encontrado = data.encontrado && arquivos && arquivos.length > 0;
+
+  const steps = [
+    { fonte: 's3', status: status?.s3 },
+  ];
+  if (status?.local && status.local !== 'nao_consultado') {
+    steps.push({ fonte: 'local', status: status?.local });
   }
-  return `<span>${status || 'Desconhecido'}</span>`;
+
+  const html = `
+    <div class="result-card ${encontrado ? 'success' : 'not-found'}">
+      <div class="d-flex align-items-start gap-3 mb-3">
+        <div class="result-icon ${encontrado ? 'success-icon' : 'not-found-icon'}">
+          ${encontrado ? '&#10003;' : '&#10007;'}
+        </div>
+        <div class="flex-grow-1 min-w-0">
+          <strong class="fs-6">${encontrado ? 'Arquivo encontrado' : 'Nenhum resultado'}</strong>
+          <div class="text-secondary small">${duracao}s</div>
+        </div>
+      </div>
+
+      <div class="search-steps mb-3">
+        ${steps.map((s) => buildStep(s.fonte, s.status)).join('')}
+      </div>
+
+      ${encontrado ? buildDownloadButtons(arquivos) : ''}
+    </div>
+  `;
+
+  return html;
+}
+
+function buildStep(fonte, status) {
+  const nomes = { s3: 'AWS S3 (nuvem)', local: 'Servidor local (rede)' };
+
+  let cls, text;
+  if (status === 'ok') { cls = 'ok'; text = 'Arquivo encontrado'; }
+  else if (status === 'nao_encontrado') { cls = 'miss'; text = 'Nenhum resultado'; }
+  else if (status === 'nao_consultado') { cls = 'skip'; text = 'Não consultado'; }
+  else if (status && status.startsWith('erro:')) { cls = 'err'; text = status.replace('erro:', '').trim(); }
+  else { cls = 'skip'; text = status || 'Desconhecido'; }
+
+  return `
+    <div class="step-item">
+      <div class="step-dot ${cls}"></div>
+      <div>
+        <div class="step-fonte">${nomes[fonte] || fonte}</div>
+        <div class="step-status ${cls}">${text}</div>
+      </div>
+    </div>
+  `;
+}
+
+function buildDownloadButtons(arquivos) {
+  const buttons = arquivos.map((a) => `
+    <a href="${escapeHtml(a.downloadUrl)}"
+       class="btn btn-success btn-sm"
+       target="_blank"
+       rel="noopener">
+      &#10515; ${escapeHtml(a.nomeParaDownload)}
+    </a>
+  `).join('');
+
+  return `<div class="download-buttons">${buttons}</div>`;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
 }
