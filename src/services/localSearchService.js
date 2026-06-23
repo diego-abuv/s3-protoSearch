@@ -19,10 +19,10 @@ function getPathConfigsForYear(anoBusca) {
           const [basePath, subRootsString] = configString.split(',');
           if (subRootsString) {
             const searchRoots = subRootsString.split(';').map((p) => path.join(basePath.trim(), p.trim()));
-            configs.push({ basePath: basePath.trim(), searchRoots, structure: 'special' });
+            configs.push({ basePath: basePath.trim(), searchRoots });
           } else {
             const searchRoots = basePath.split(';').map((p) => p.trim());
-            configs.push({ basePath: null, searchRoots, structure: 'default' });
+            configs.push({ basePath: null, searchRoots });
           }
         }
       }
@@ -74,70 +74,61 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
 
       algumCaminhoAcessivel = true;
 
-      let prefixPath;
-
-      if (pathConfig.structure === 'special') {
-        prefixPath = path.join(ano, mes, dia);
-      } else {
-        const mesSemZero = parseInt(mes, 10).toString();
-        const diaSemZero = parseInt(dia, 10).toString();
-        prefixPath = path.join(ano, mesSemZero, diaSemZero);
-      }
-
-      const fullPath = path.join(searchRoot, prefixPath);
-
-      logger.info(`Buscando no diretório: ${fullPath}`);
-
-      try {
-        const stat = await fs.stat(fullPath);
-        if (!stat.isDirectory()) {
-          logger.info(`Diretório não encontrado: ${fullPath}`);
-          continue;
-        }
-      } catch {
-        logger.info(`Diretório não encontrado: ${fullPath}`);
-        continue;
-      }
-
-      let allFiles;
-      try {
-        allFiles = await listFilesRecursively(fullPath);
-      } catch (err) {
-        logger.warn(`Erro ao listar arquivos em "${fullPath}": ${err.message}. Pulando...`);
-        continue;
-      }
+      const variantes = [
+        path.join(ano, String(parseInt(mes, 10)), String(parseInt(dia, 10))),
+        path.join(ano, String(parseInt(mes, 10)), dia.padStart(2, '0')),
+        path.join(ano, mes.padStart(2, '0'), dia.padStart(2, '0')),
+        path.join(ano, mes.padStart(2, '0'), String(parseInt(dia, 10))),
+      ];
+      const prefixosUnicos = [...new Set(variantes)];
 
       const relativeBasePath = pathConfig.basePath || searchRoot;
-
-      const contents = allFiles.map((filePath) => {
-        const relativePath = path.relative(relativeBasePath, filePath);
-        const pathKey = relativePath.replace(/\\/g, '/');
-        return { Key: pathKey };
-      });
-
       const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase();
 
-      const arquivosEncontrados = contents.filter((obj) => {
-        const nomeBaseNaChave = path.parse(obj.Key).name.toLowerCase();
-        return nomeBaseNaChave.includes(termoBuscado);
-      });
+      for (const prefixo of prefixosUnicos) {
+        const fullPath = path.join(searchRoot, prefixo);
+        logger.info(`Testando caminho: ${prefixo}`);
 
-      if (arquivosEncontrados.length > 0) {
-        const resultados = arquivosEncontrados.map((obj) => {
-          logger.success(`Arquivo encontrado! Chave: ${obj.Key}`);
+        try {
+          const stat = await fs.stat(fullPath);
+          if (!stat.isDirectory()) continue;
+        } catch {
+          continue;
+        }
 
-          const caminhoCompletoDoArquivo = path.join(relativeBasePath, obj.Key.replace(/\//g, path.sep));
-          const nomeParaDownload = path.basename(obj.Key);
-          const downloadUrl = `/download-local?file=${encodeURIComponent(caminhoCompletoDoArquivo)}`;
+        let allFiles;
+        try {
+          allFiles = await listFilesRecursively(fullPath);
+        } catch (err) {
+          logger.warn(`Erro ao listar "${fullPath}": ${err.message}. Pulando...`);
+          continue;
+        }
 
-          logger.info(`Arquivo físico em: ${caminhoCompletoDoArquivo}`);
-          logger.info(`URL de download: ${downloadUrl}`);
+        const arquivosEncontrados = [];
+        for (const filePath of allFiles) {
+          const nomeBase = path.parse(filePath).name.toLowerCase();
+          if (nomeBase.includes(termoBuscado)) {
+            const relativePath = path.relative(relativeBasePath, filePath);
+            const pathKey = relativePath.replace(/\\/g, '/');
+            arquivosEncontrados.push({ filePath, Key: pathKey });
+          }
+        }
 
-          return { downloadUrl, nomeParaDownload };
-        });
+        if (arquivosEncontrados.length > 0) {
+          const resultados = arquivosEncontrados.map((obj) => {
+            const nomeParaDownload = path.basename(obj.Key);
+            const downloadUrl = `/download-local?file=${encodeURIComponent(obj.filePath)}`;
 
-        logger.section('Busca local finalizada com sucesso');
-        return resultados;
+            logger.success(`Arquivo encontrado! Chave: ${obj.Key}`);
+            logger.info(`Arquivo físico em: ${obj.filePath}`);
+            logger.info(`URL de download: ${downloadUrl}`);
+
+            return { downloadUrl, nomeParaDownload };
+          });
+
+          logger.section('Busca local finalizada com sucesso');
+          return resultados;
+        }
       }
     }
   }
