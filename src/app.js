@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import rateLimit from 'express-rate-limit';
 import { createSearchRoutes } from './routes/search.js';
 import { logger } from './utils/logger.js';
 
@@ -11,6 +12,23 @@ export function createApp(searchableService) {
   const app = express();
 
   app.use(express.json());
+
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    next();
+  });
+
+  const searchLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res) => {
+      res.status(429).json({ error: 'Muitas requisições. Tente novamente em instantes.' });
+    },
+  });
+  app.use('/buscar-arquivo', searchLimiter);
 
   app.use(express.static(path.resolve(__dirname, '..', 'public')));
 
@@ -31,21 +49,26 @@ export function createApp(searchableService) {
     };
 
     app.get('/download-local', (req, res) => {
-      const filePath = req.query.file;
+      const rawPath = req.query.file;
 
-      if (!filePath) {
+      if (!rawPath) {
         return res.status(400).send('Parâmetro "file" não especificado.');
       }
 
-      const validBasePaths = getAllBasePaths();
-      const isPathValid = validBasePaths.some((basePath) => filePath.startsWith(basePath));
+      const resolvedPath = path.resolve(rawPath);
+
+      const validBasePaths = getAllBasePaths().map((p) => path.resolve(p.trim()));
+      const isPathValid = validBasePaths.some((base) => {
+        const normalizedBase = base.replace(/[\\/]$/, '');
+        return resolvedPath.startsWith(normalizedBase + path.sep) || resolvedPath === normalizedBase;
+      });
 
       if (!isPathValid) {
-        logger.warn(`Tentativa de acesso a arquivo fora de um diretório base válido: ${filePath}`);
+        logger.warn(`Tentativa de path-traversal bloqueada: ${rawPath} -> ${resolvedPath}`);
         return res.status(403).send('Acesso negado.');
       }
 
-      res.download(filePath);
+      res.download(resolvedPath);
     });
   }
 
