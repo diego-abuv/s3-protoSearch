@@ -16,7 +16,7 @@ Aplicação web para busca unificada de arquivos de protocolo (gravações de á
 
 ## 🚀 Funcionalidades
 
-- **Interface Web**: Formulário simples com data e nome do arquivo, resultados com links de download diretos.
+- **Interface Web**: Formulário simples com data e nome do arquivo, step-by-step por servidor, timer de performance e resultados com links de download diretos.
 - **Busca Unificada**: Primeiro tenta no S3; se não encontrar (ou houver falha de conexão), busca nos servidores locais.
 - **URLs Assinadas (S3)**: Links temporários de 1 hora — sem expor as credenciais da AWS.
 - **Download Local Protegido**: Endpoint com validação de path para impedir acesso fora dos diretórios configurados.
@@ -24,8 +24,9 @@ Aplicação web para busca unificada de arquivos de protocolo (gravações de á
 - **Resiliência**: Falha de rede no S3 não quebra o fluxo — o fallback local é executado mesmo com erro.
 - **Configuração Flexível**: Múltiplos servidores e estruturas de diretório via `.env`.
 - **Keep-Alive nas conexões S3**: Reuso de sockets com pool de 25 conexões, evitando exaustão de portas efêmeras.
-- **Deduplicação de prefixos**: Prefixos de data redundantes são eliminados com `Set`, reduzindo chamadas S3.
-- **Delay entre páginas de listagem**: Pausa de 200ms entre páginas S3, evitando rajadas de conexões.
+- **Retry com backoff**: Requisições S3 falhas são repetidas com exponential backoff + jitter (3 tentativas).
+- **Busca paralela com AbortController**: Prefixos de data testados em paralelo via `Promise.all`; ao encontrar, os demais são abortados durante a recursão — redução de ~95% no tempo de fallback local.
+- **Rate-limit**: 30 requisições por minuto por IP, com resposta `429` e aviso no log.
 - **Docker + PM2**: Suporte a container e gerenciamento de processo com auto-restart.
 
 ---
@@ -56,12 +57,12 @@ AWS_SECRET_ACCESS_KEY=SEU_SECRET_AWS
 AWS_BUCKET_NAME=nome-do-bucket
 AWS_REGION=sa-east-1
 
-# Busca Local — Estrutura Padrão
-PATH_74=\\192.168.x.xxx\share\backupligacoes
+# Busca Local — Sem subpastas
+PATH_74=\\192.168.x.xxx\share\base
 YEARS_74=2021,2022,2023,2024
 
-# Busca Local — Estrutura Especial (com subpastas)
-PATH_196=\\192.168.x.xxx\share,subfolder1;subfolder2
+# Busca Local — Com subpastas
+PATH_196=\\192.168.x.xxx\share\base,sub1;sub2
 YEARS_196=2019,2020,2021
 ```
 
@@ -80,26 +81,18 @@ YEARS_196=2019,2020,2021
 
 ### Estruturas de Diretório Local
 
-**Padrão** — a data é montada como `YYYY/M/D` (sem zero):
+O sistema testa **automaticamente 4 variações** da data (`YYYY/M/D`, `YYYY/M/DD`, `YYYY/MM/DD`, `YYYY/MM/D`) em cada servidor configurado, combinando mês e dia com e sem zero à esquerda. Variações redundantes são eliminadas com `Set`.
 
 ```text
-\\servidor\base\2024\5\26
+\\servidor\base\2024\5\26     → sem zero
+\\servidor\base\2024\5\26     ← duplicado, descartado
+\\servidor\base\2024\05\26    → com zero no mês
+\\servidor\base\2024\05\26    ← duplicado, descartado
 ```
 
-**Especial** — quando o `PATH_<ID>` contém vírgula, define subpastas com data `YYYY/MM/DD` (com zero):
+As buscas são feitas em **paralelo** via `Promise.all` com `AbortController` — assim que um prefixo encontra o arquivo, os demais são abortados durante a recursão.
 
-```text
-PATH_196=\\servidor\base,sub1;sub2
-```
-
-Resulta em:
-
-```text
-\\servidor\base\sub1\2024\05\26
-\\servidor\base\sub2\2024\05\26
-```
-
-> **Atenção**: Use `\\` para caminhos Windows e `/` para Linux.
+> **Atenção**: Use `\\` para caminhos Windows e `/` para Linux. Quando o `PATH_<ID>` contém vírgula, define subpastas (ex: `PATH_196=\\servidor\base,sub1;sub2`).
 
 ---
 
@@ -119,12 +112,16 @@ s3-protoSearch/
 │   ├── app.js                    # Express app + rota /download-local
 │   ├── routes/
 │   │   └── search.js             # POST /buscar-arquivo
-│   └── services/
-│       ├── unifiedSearchService.js   # Orquestrador S3 -> Local
-│       ├── s3SearchService.js        # Busca no S3 com prefixos
-│       └── localSearchService.js     # Busca em diretórios de rede
+│   ├── services/
+│   │   ├── unifiedSearchService.js   # Orquestrador S3 -> Local
+│   │   ├── s3SearchService.js        # Busca no S3 com prefixos
+│   │   └── localSearchService.js     # Busca em diretórios de rede
+│   └── utils/
+│       ├── errorCodes.js             # Mapa de erros AWS/rede + sanitizeError
+│       ├── retry.js                  # Exponential backoff com jitter
+│       └── logger.js                 # Logger estruturado com cores
 └── public/
-    ├── index.html                # Interface Bootstrap 5
+    ├── index.html                # Interface web (Bootstrap CSS via CDN)
     ├── main.js                   # Lógica de busca no frontend
     └── style.css                 # Customizações
 ```
@@ -232,19 +229,27 @@ npm run format               # Formata com Prettier
 
 ---
 
-## ⚡ Otimizações de Performance (S3)
+## ⚡ Otimizações de Performance
 
-### Keep-Alive e Pool de Conexões
+### S3 — Keep-Alive e Pool de Conexões
 
 O cliente S3 utiliza `https.Agent` com `keepAlive: true` e `maxSockets: 25` — as conexões TLS são reutilizadas em vez de abertas e fechadas a cada requisição. Isso elimina o acúmulo de sockets em estado `TIME_WAIT` e previne exaustão de portas efêmeras.
 
-### Deduplicação de Prefixos
+### S3 — Deduplicação de Prefixos
 
 A função `generatePrefixes` produz 4 variações de prefixo (`YYYY/M/D`, `YYYY/M/DD`, `YYYY/MM/DD`, `YYYY/MM/D`) e as deduplica com `new Set()`. Em dias e meses ≥ 10, apenas 1 ou 2 prefixos únicos são testados em vez de 4.
 
-### Delay entre Páginas
+### S3 — Retry com Exponential Backoff
 
-Quando a listagem S3 retorna mais de 1000 objetos (truncada), um delay de 200ms é aplicado entre páginas para evitar rajadas de conexões simultâneas.
+Requisições ao S3 (`ListObjectsV2`, `getSignedUrl`) são envolvidas por `withRetry`, que tenta até 3 vezes com delay progressivo + jitter aleatório. A primeira tentativa falha espera 500ms, a segunda 1000ms, evitando picos repentinos de retry.
+
+### Local — Busca Paralela com AbortController
+
+Os 4 prefixos de data são testados em paralelo via `Promise.all`. Cada prefixo executa `listFilesRecursively` de forma independente. Quando um prefixo encontra o arquivo, `AbortController.abort()` é disparado — os demais prefixos recebem o sinal e interrompem a recursão no próximo `readdir`, retornando array vazio. Isso reduz o tempo de fallback local de ~7s para ~330ms em servidores com dezenas de milhares de arquivos.
+
+### Local — I/O Assíncrona
+
+Todo o acesso a diretórios e arquivos usa `fs.promises` (`readdir`, `stat`, `access`) em vez dos equivalentes síncronos (`readdirSync`, `existsSync`, `statSync`), permitindo que o event loop do Node.js atenda outras requisições durante a espera por I/O de rede (CIFS).
 
 ---
 
@@ -287,7 +292,7 @@ domain=SEU_DOMINIO
 Adicione ao `/etc/fstab`:
 
 ```
-//192.168.x.xxx/share /sharepoint/192-168-0-196 cifs credentials=/etc/samba/credentials/meuservidor,iocharset=utf8,file_mode=0777,dir_mode=0777 0 0
+//192.168.x.xxx/share /sharepoint/servidor cifs credentials=/etc/samba/credentials/meuservidor,iocharset=utf8,file_mode=0777,dir_mode=0777 0 0
 ```
 
 Monte todos os pontos:
@@ -306,10 +311,11 @@ Certifique-se de que as portas 443 (S3), 445 (CIFS) e a porta da aplicação est
 
 | Módulo             | Tipo            | Função                                                              |
 | ------------------ | --------------- | ------------------------------------------------------------------- |
-| **Express**        | Servidor        | HTTP + rotas + arquivos estáticos                                   |
+| **Express**        | Servidor        | HTTP + rotas + rate-limit + headers de segurança                    |
 | **S3 Client**      | SDK AWS         | Listagem de objetos + keep-alive (pool 25 sockets) + URLs assinadas |
-| **Local Search**   | FS Node         | Leitura recursiva com detecção de caminhos inacessíveis             |
+| **Local Search**   | FS Node/promises | Leitura recursiva assíncrona com AbortController + prefixos paralelos |
 | **Unified Search** | Orquestrador    | Sequência S3 → fallback local com resiliência                       |
+| **Utils**          | errorCodes, retry, logger | Tradução de erros, exponential backoff, logs estruturados |
 | **PM2**            | Process Manager | Auto-restart + ambiente consistente                                 |
 | **Docker**         | Container       | Isolamento + volumes CIFS                                           |
 
@@ -319,12 +325,14 @@ Certifique-se de que as portas 443 (S3), 445 (CIFS) e a porta da aplicação est
 
 ```mermaid
 graph TD
-    U[Usuário] --> F[Frontend Bootstrap]
+    U[Usuário] --> F[Frontend Bootstrap CSS]
     F --> API[POST /buscar-arquivo]
-    API --> ORQ[UnifiedSearchService]
+    API --> RL[Rate-Limit 30/min]
+    RL --> ORQ[UnifiedSearchService]
 
     subgraph "Orquestração"
-        ORQ --> TRY1{Tenta S3}
+        ORQ --> RETRY[withRetry 3x backoff]
+        RETRY --> TRY1{Tenta S3}
         TRY1 -->|OK| S3[AWS S3 - ListObjectsV2]
         TRY1 -->|Erro de rede| FALLBACK
         TRY1 -->|Não encontrou| FALLBACK
@@ -334,7 +342,7 @@ graph TD
     end
 
     S3 --> |URL assinada 1h| URL1[keepAlive + dedup]
-    FS --> |/download-local| URL2[link protegido]
+    FS --> |/download-local| URL2[AbortController]
 
     URL1 --> R[Resposta JSON]
     URL2 --> R
@@ -360,6 +368,8 @@ O sistema foi projetado para **nunca retornar um erro 500 genérico sem explica�
 | Path de rede inacessível              | Loga aviso, pula para próxima configuração         |
 | Todos os caminhos locais inacessíveis | Status `erro: Nenhum caminho de rede acessivel`    |
 | Path traversal detectado              | `403` negado com warn no log                       |
+| Rate-limit excedido (30 req/min)      | `429` com aviso no log e no corpo da resposta      |
+| Erro genérico no servidor             | `sanitizeError` retorna `Erro interno do servidor` sem vazar detalhes |
 
 ---
 
