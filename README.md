@@ -8,9 +8,7 @@
   <img src="https://img.shields.io/badge/S3-KeepAlive-blueviolet?style=for-the-badge&logo=amazons3" alt="S3 KeepAlive">
 </p>
 
-Aplicação web para busca unificada de arquivos de protocolo (gravações de áudio, documentos) armazenados em **AWS S3** ou **pastas de rede internas**. Desenvolvida para ambientes corporativos com servidores de call-center legados e armazenamento em nuvem híbrido.
-
-> Projetado para rodar em containers **LXC no Proxmox**, com fallback automático entre fontes de dados e diagnóstico detalhado de falhas de conexão.
+Aplicação web containerizada para busca unificada de arquivos de protocolo (gravações de áudio, documentos) armazenados em **AWS S3** com fallback para **diretórios locais**. Ideal para ambientes híbridos com servidores legados.
 
 ---
 
@@ -27,7 +25,7 @@ Aplicação web para busca unificada de arquivos de protocolo (gravações de á
 - **Retry com backoff**: Requisições S3 falhas são repetidas com exponential backoff + jitter (3 tentativas).
 - **Busca paralela com AbortController**: Prefixos de data testados em paralelo via `Promise.all`; ao encontrar, os demais são abortados durante a recursão — redução de ~95% no tempo de fallback local.
 - **Rate-limit**: 30 requisições por minuto por IP, com resposta `429` e aviso no log.
-- **Docker + PM2**: Suporte a container e gerenciamento de processo com auto-restart.
+- **Docker**: Containerização completa com Dockerfile e docker-compose.
 
 ---
 
@@ -35,10 +33,9 @@ Aplicação web para busca unificada de arquivos de protocolo (gravações de á
 
 | Recurso | Versão                           |
 | ------- | -------------------------------- |
-| Node.js | 20.x                             |
-| Docker  | 24+ (opcional)                   |
-| PM2     | 5+ (opcional)                    |
-| Acesso  | Rede interna (SMB/CIFS) + AWS S3 |
+| Node.js | 20.x                  |
+| Docker  | 24+ (recomendado)      |
+| Acesso  | AWS S3 + diretório local |
 
 ---
 
@@ -52,47 +49,47 @@ PORT=80
 NODE_ENV=busca-ligacoes
 
 # AWS S3
-AWS_ACCESS_KEY_ID=SUA_CHAVE_AWS
-AWS_SECRET_ACCESS_KEY=SEU_SECRET_AWS
+AWS_ACCESS_KEY_ID=SUA_ACCESS_KEY
+AWS_SECRET_ACCESS_KEY=SEU_SECRET_KEY
 AWS_BUCKET_NAME=nome-do-bucket
 AWS_REGION=sa-east-1
 
 # Busca Local — Sem subpastas
-PATH_74=\\192.168.x.xxx\share\base
-YEARS_74=2021,2022,2023,2024
+PATH_X5=/sharepoint/pastaPrincipal
+YEARS_X5=2021,2022,2023,2024
 
 # Busca Local — Com subpastas
-PATH_196=\\192.168.x.xxx\share\base,sub1;sub2
-YEARS_196=2019,2020,2021
+PATH_Z2=/sharepoint/pastaSecundaria,subPasta1;subPasta2
+YEARS_Z2=2019,2020,2021
 ```
 
 ### Detalhamento das Variáveis
 
-| Variável                | Obrigatório | Descrição                                       |
-| ----------------------- | ----------- | ----------------------------------------------- |
-| `PORT`                  | Sim         | Porta do servidor HTTP                          |
-| `NODE_ENV`              | Não         | `busca-ligacoes` ativa a rota de download local |
-| `AWS_ACCESS_KEY_ID`     | Sim         | Chave de acesso AWS                             |
-| `AWS_SECRET_ACCESS_KEY` | Sim         | Chave secreta AWS                               |
-| `AWS_BUCKET_NAME`       | Sim         | Nome do bucket (com ou sem `s3://`)             |
-| `AWS_REGION`            | Sim         | Região do bucket (ex: `sa-east-1`)              |
-| `PATH_<ID>`             | Condicional | Caminho base de busca local                     |
-| `YEARS_<ID>`            | Condicional | Anos associados ao `PATH_<ID>`                  |
+| Variável                | Obrigatório | Descrição                                                   |
+| ----------------------- | ----------- | ----------------------------------------------------------- |
+| `PORT`                  | Sim         | Porta do servidor HTTP                                      |
+| `NODE_ENV`              | Não         | `busca-ligacoes` ativa a rota de download local             |
+| `AWS_ACCESS_KEY_ID`     | Sim         | Chave de acesso AWS                                         |
+| `AWS_SECRET_ACCESS_KEY` | Sim         | Chave secreta AWS                                           |
+| `AWS_BUCKET_NAME`       | Sim         | Nome do bucket (com ou sem `s3://`)                         |
+| `AWS_REGION`            | Sim         | Região do bucket (ex: `sa-east-1`)                          |
+| `PATH_<ID>`             | Condicional | Caminho base da busca local + subpastas (após vírgula)      |
+| `YEARS_<ID>`            | Condicional | Anos associados ao `PATH_<ID>` correspondente               |
 
 ### Estruturas de Diretório Local
 
 O sistema testa **automaticamente 4 variações** da data (`YYYY/M/D`, `YYYY/M/DD`, `YYYY/MM/DD`, `YYYY/MM/D`) em cada servidor configurado, combinando mês e dia com e sem zero à esquerda. Variações redundantes são eliminadas com `Set`.
 
 ```text
-\\servidor\base\2024\5\26     → sem zero
-\\servidor\base\2024\5\26     ← duplicado, descartado
-\\servidor\base\2024\05\26    → com zero no mês
-\\servidor\base\2024\05\26    ← duplicado, descartado
+/sharepoint/pastaPrincipal/2024/1/5      → sem zero
+/sharepoint/pastaPrincipal/2024/1/5      ← duplicado, descartado
+/sharepoint/pastaPrincipal/2024/01/05    → com zero no mês/dia
+/sharepoint/pastaPrincipal/2024/01/5     ← duplicado, descartado
 ```
 
 As buscas são feitas em **paralelo** via `Promise.all` com `AbortController` — assim que um prefixo encontra o arquivo, os demais são abortados durante a recursão.
 
-> **Atenção**: Use `\\` para caminhos Windows e `/` para Linux. Quando o `PATH_<ID>` contém vírgula, define subpastas (ex: `PATH_196=\\servidor\base,sub1;sub2`).
+> Exemplo de subpastas: `PATH_Z2=/sharepoint/pastaSecundaria,subPasta1;subPasta2` faz a busca em `/sharepoint/pastaSecundaria/subPasta1` e `/sharepoint/pastaSecundaria/subPasta2`.
 
 ---
 
@@ -100,12 +97,9 @@ As buscas são feitas em **paralelo** via `Promise.all` com `AbortController` �
 
 ```
 s3-protoSearch/
-├── .env                          # Configurações sensíveis
-├── .prettierrc                   # Configuração do Prettier
-├── eslint.config.js              # Configuração do ESLint
-├── docker-compose.yml            # Orquestração Docker
+├── .env.example                  # Template de configuração (commitável)
+├── docker-compose.yml            # Orquestração Docker (teste local)
 ├── Dockerfile                    # Imagem Node 20-alpine
-├── ecosystem.config.cjs          # Configuração PM2
 ├── package.json
 ├── src/
 │   ├── server.js                 # Entry point
@@ -113,17 +107,24 @@ s3-protoSearch/
 │   ├── routes/
 │   │   └── search.js             # POST /buscar-arquivo
 │   ├── services/
-│   │   ├── unifiedSearchService.js   # Orquestrador S3 -> Local
+│   │   ├── unifiedSearchService.js   # Orquestrador S3 → Local
 │   │   ├── s3SearchService.js        # Busca no S3 com prefixos
-│   │   └── localSearchService.js     # Busca em diretórios de rede
+│   │   └── localSearchService.js     # Busca em diretórios locais
 │   └── utils/
-│       ├── errorCodes.js             # Mapa de erros AWS/rede + sanitizeError
+│       ├── errorCodes.js             # Mapa de erros AWS/rede
 │       ├── retry.js                  # Exponential backoff com jitter
 │       └── logger.js                 # Logger estruturado com cores
 └── public/
-    ├── index.html                # Interface web (Bootstrap CSS via CDN)
-    ├── main.js                   # Lógica de busca no frontend
-    └── style.css                 # Customizações
+    ├── index.html                # Interface web (glassmorphism + templates)
+    ├── style.css                 # Paleta TRON + light mode
+    ├── vendor/
+    │   ├── bootstrap.min.css     # Bootstrap local (sem CDN)
+    │   └── bootstrap.min.js
+    └── js/
+        ├── utils.js              # escapeHtml
+        ├── theme.js              # Toggle dark/light com localStorage
+        ├── search.js             # Form submit + fetch + erro
+        └── render.js             # Template cloning de resultados
 ```
 
 ---
@@ -199,24 +200,16 @@ s3-protoSearch/
 git clone <URL_DO_REPOSITORIO>
 cd s3-protoSearch
 cp .env.example .env        # Configure suas credenciais
-docker-compose up -d
+docker compose up -d         # ou: docker-compose up -d
 ```
 
-Acesse: `http://<IP_DO_HOST>:80`
+Acesse: `http://localhost:80`
 
-### PM2 (sem Docker)
+### Desenvolvimento (sem Docker)
 
 ```bash
 npm install
-npm install -g pm2
-pm2 start ecosystem.config.cjs
-```
-
-### Manual (desenvolvimento)
-
-```bash
-npm install
-npm start                    # ou: node src/server.js
+npm run dev                  # Node --watch com auto-restart
 ```
 
 ### Lint e Formatação
@@ -253,60 +246,6 @@ Todo o acesso a diretórios e arquivos usa `fs.promises` (`readdir`, `stat`, `ac
 
 ---
 
-## 🐧 Preparação do Container LXC
-
-### Ajustes de Rede (sysctl)
-
-Para ambientes com muitas requisições S3, configure o kernel do container para suportar mais conexões:
-
-```bash
-# Aumenta pool de portas efêmeras de ~28k para ~64k
-echo "net.ipv4.ip_local_port_range = 1024 65535" >> /etc/sysctl.conf
-
-# Reduz TIME_WAIT de 60s para 30s (portas liberadas mais rápido)
-echo "net.ipv4.tcp_fin_timeout = 30" >> /etc/sysctl.conf
-
-# Aplica as alterações
-sysctl -p
-```
-
-### Acesso a Pastas de Rede (CIFS)
-
-```bash
-sudo apt install -y cifs-utils
-sudo mkdir -p /sharepoint
-```
-
-Crie um arquivo de credenciais:
-
-```bash
-sudo nano /etc/samba/credentials/meuservidor
-```
-
-```
-username=SEU_USUARIO
-password=SUA_SENHA
-domain=SEU_DOMINIO
-```
-
-Adicione ao `/etc/fstab`:
-
-```
-//192.168.x.xxx/share /sharepoint/servidor cifs credentials=/etc/samba/credentials/meuservidor,iocharset=utf8,file_mode=0777,dir_mode=0777 0 0
-```
-
-Monte todos os pontos:
-
-```bash
-sudo mount -a
-```
-
-### Firewall
-
-Certifique-se de que as portas 443 (S3), 445 (CIFS) e a porta da aplicação estão liberadas entre o container e os servidores de rede.
-
----
-
 ## 🛠 Estrutura do Sistema
 
 | Módulo             | Tipo            | Função                                                              |
@@ -316,8 +255,7 @@ Certifique-se de que as portas 443 (S3), 445 (CIFS) e a porta da aplicação est
 | **Local Search**   | FS Node/promises | Leitura recursiva assíncrona com AbortController + prefixos paralelos |
 | **Unified Search** | Orquestrador    | Sequência S3 → fallback local com resiliência                       |
 | **Utils**          | errorCodes, retry, logger | Tradução de erros, exponential backoff, logs estruturados |
-| **PM2**            | Process Manager | Auto-restart + ambiente consistente                                 |
-| **Docker**         | Container       | Isolamento + volumes CIFS                                           |
+| **Docker**         | Container       | Isolamento + volume montado                                        |
 
 ---
 
@@ -375,4 +313,4 @@ O sistema foi projetado para **nunca retornar um erro 500 genérico sem explica�
 
 ## 📄 Licença
 
-Distribuído sob licença interna de uso corporativo.
+MIT
