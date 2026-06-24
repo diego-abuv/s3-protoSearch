@@ -16,6 +16,12 @@
   --scrollbar-thumb: #2563EB;
   --glow-1: rgba(37, 99, 235, 0.25);
   --glow-2: rgba(30, 58, 138, 0.15);
+  --status-miss: #b45309;
+  --status-err: #dc2626;
+  --status-miss-bg: rgba(180, 83, 9, 0.15);
+  --status-err-bg: rgba(220, 38, 38, 0.15);
+  --status-miss-border: rgba(180, 83, 9, 0.3);
+  --status-err-border: rgba(220, 38, 38, 0.3);
 }
 
 [data-bs-theme="dark"] {
@@ -36,6 +42,12 @@
   --scrollbar-thumb: #00D9FF;
   --glow-1: rgba(0, 217, 255, 0.12);
   --glow-2: rgba(45, 108, 223, 0.08);
+  --status-miss: #eab308;
+  --status-err: #ef4444;
+  --status-miss-bg: rgba(234, 179, 8, 0.15);
+  --status-err-bg: rgba(239, 68, 68, 0.15);
+  --status-miss-border: rgba(234, 179, 8, 0.3);
+  --status-err-border: rgba(239, 68, 68, 0.3);
 }
 
 /* ==============================
@@ -227,11 +239,11 @@ body {
 }
 
 .result-card.not-found {
-  border-color: rgba(234, 179, 8, 0.3);
+  border-color: var(--status-miss-border);
 }
 
 .result-card.error {
-  border-color: rgba(239, 68, 68, 0.3);
+  border-color: var(--status-err-border);
 }
 
 @keyframes fadeSlideIn {
@@ -263,13 +275,13 @@ body {
 }
 
 .result-icon.not-found-icon {
-  background: rgba(234, 179, 8, 0.15);
-  color: #eab308;
+  background: var(--status-miss-bg);
+  color: var(--status-miss);
 }
 
 .result-icon.error-icon {
-  background: rgba(239, 68, 68, 0.15);
-  color: #ef4444;
+  background: var(--status-err-bg);
+  color: var(--status-err);
 }
 
 /* ==============================
@@ -302,8 +314,8 @@ body {
 }
 
 .step-dot.miss {
-  background: #eab308;
-  box-shadow: 0 0 6px rgba(234, 179, 8, 0.5);
+  background: var(--status-miss);
+  box-shadow: 0 0 6px var(--status-miss-border);
 }
 
 .step-dot.skip {
@@ -311,8 +323,8 @@ body {
 }
 
 .step-dot.err {
-  background: #ef4444;
-  box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+  background: var(--status-err);
+  box-shadow: 0 0 6px var(--status-err-border);
 }
 
 .step-fonte {
@@ -329,7 +341,7 @@ body {
 }
 
 .step-status.miss {
-  color: #eab308;
+  color: var(--status-miss);
 }
 
 .step-status.skip {
@@ -337,7 +349,7 @@ body {
 }
 
 .step-status.err {
-  color: #ef4444;
+  color: var(--status-err);
 }
 
 /* ==============================
@@ -345,7 +357,7 @@ body {
    ============================== */
 
 .failure-reason {
-  background: rgba(234, 179, 8, 0.1);
+  background: var(--status-miss-bg);
   border-radius: 0.5rem;
   padding: 0.5rem 0.75rem;
   font-size: 0.8125rem;
