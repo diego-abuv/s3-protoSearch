@@ -37,13 +37,17 @@ function generatePrefixes(ano, mes, dia) {
   return [...new Set([`${ano}/${m}/${d}/`, `${ano}/${m}/${d2}/`, `${ano}/${m2}/${d2}/`, `${ano}/${m2}/${d}/`])];
 }
 
-async function searchPrefix(prefixo, termoBuscado) {
+async function searchPrefix(prefixo, termoBuscado, signal) {
+  if (signal?.aborted) return null;
+
   logger.info(`Testando prefixo: ${prefixo}`);
 
   let continuationToken = undefined;
   let isTruncated = true;
 
   while (isTruncated) {
+    if (signal?.aborted) return null;
+
     const listCommand = new ListObjectsV2Command({
       Bucket: bucketName,
       Prefix: prefixo,
@@ -89,8 +93,16 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
   logger.info('Prefixos:', prefixes);
 
   logger.info('Buscando em todos os prefixos em paralelo...');
+
+  const abortController = new AbortController();
+  const { signal } = abortController;
+
   const resultadosPrefixo = await Promise.all(
-    prefixes.map((p) => searchPrefix(p, termoBuscado))
+    prefixes.map(async (p) => {
+      const result = await searchPrefix(p, termoBuscado, signal);
+      if (result) abortController.abort();
+      return result;
+    })
   );
 
   const arquivosEncontrados = resultadosPrefixo
