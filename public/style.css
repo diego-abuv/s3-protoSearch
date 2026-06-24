@@ -1,19 +1,248 @@
-/* --- Result card --- */
+:root, [data-bs-theme="light"] {
+  --bg-1: #BFDBFE;
+  --bg-2: #EFF6FF;
+  --bg-3: #93C5FD;
+  --glass-bg: rgba(255, 255, 255, 0.75);
+  --glass-border: rgba(37, 99, 235, 0.1);
+  --glass-shadow: 0 8px 32px rgba(30, 58, 138, 0.08);
+  --glass-input-bg: rgba(255, 255, 255, 0.8);
+  --glass-input-border: rgba(30, 58, 138, 0.1);
+  --gradient-start: #2563EB;
+  --gradient-end: #1E3A8A;
+  --theme-toggle-bg: rgba(30, 58, 138, 0.04);
+  --theme-toggle-border: rgba(30, 58, 138, 0.08);
+  --result-card-bg: rgba(255, 255, 255, 0.8);
+  --scrollbar-track: #DBEAFE;
+  --scrollbar-thumb: #2563EB;
+  --glow-1: rgba(37, 99, 235, 0.25);
+  --glow-2: rgba(30, 58, 138, 0.15);
+}
+
+[data-bs-theme="dark"] {
+  --bg-1: #05070D;
+  --bg-2: #202734;
+  --bg-3: #05070D;
+  --glass-bg: rgba(32, 39, 52, 0.6);
+  --glass-border: rgba(0, 217, 255, 0.12);
+  --glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  --glass-input-bg: rgba(32, 39, 52, 0.7);
+  --glass-input-border: rgba(0, 217, 255, 0.18);
+  --gradient-start: #00D9FF;
+  --gradient-end: #2D6CDF;
+  --theme-toggle-bg: rgba(0, 217, 255, 0.05);
+  --theme-toggle-border: rgba(0, 217, 255, 0.2);
+  --result-card-bg: rgba(32, 39, 52, 0.7);
+  --scrollbar-track: #202734;
+  --scrollbar-thumb: #00D9FF;
+  --glow-1: rgba(0, 217, 255, 0.12);
+  --glow-2: rgba(45, 108, 223, 0.08);
+}
+
+/* ==============================
+   Base — Transições
+   ============================== */
+
+body, .glass-card, .glass-input, .result-card,
+.btn-gradient, .theme-toggle, .search-progress,
+.footer-credit, .gradient-text {
+  transition: background-color 0.4s ease, border-color 0.4s ease, box-shadow 0.4s ease;
+}
+body, .theme-toggle, .btn-gradient {
+  transition: color 0.3s ease, transform 0.3s ease;
+}
+
+/* ==============================
+   Background — Gradiente + Glow
+   ============================== */
+
+body {
+  background:
+    radial-gradient(ellipse 70% 50% at 10% 15%, var(--glow-1) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 90% 80%, var(--glow-2) 0%, transparent 50%),
+    linear-gradient(135deg, var(--bg-1), var(--bg-2), var(--bg-3));
+  background-size: 200% 200%;
+  animation: gradientShift 30s ease-in-out infinite;
+  min-height: 100vh;
+}
+
+@keyframes gradientShift {
+  0% { background-position: 0% 50%; }
+  15% { background-position: 100% 10%; }
+  30% { background-position: 20% 90%; }
+  50% { background-position: 80% 40%; }
+  70% { background-position: 0% 80%; }
+  85% { background-position: 60% 0%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* ==============================
+   Textos — Gradient text
+   ============================== */
+
+.gradient-text {
+  background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  letter-spacing: -0.02em;
+}
+
+.glass-card {
+  position: relative;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+  border-radius: 1rem;
+}
+
+/* ==============================
+   Glass — Card, input, botão
+   ============================== */
+
+.glass-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), transparent 50%, rgba(0, 0, 0, 0.02));
+  pointer-events: none;
+}
+
+.glass-input {
+  background: var(--glass-input-bg) !important;
+  border: 1px solid var(--glass-input-border) !important;
+  color: inherit !important;
+}
+
+.glass-input:focus {
+  border-color: var(--gradient-start) !important;
+  box-shadow: 0 0 0 3px rgba(0, 217, 255, 0.15) !important;
+}
+
+.btn-gradient {
+  background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+  border: none;
+  color: #fff;
+  font-weight: 600;
+  position: relative;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.btn-gradient::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, var(--gradient-end), var(--gradient-start));
+  opacity: 0;
+  z-index: -1;
+  transition: opacity 0.3s ease;
+}
+
+.btn-gradient:hover::before {
+  opacity: 1;
+}
+
+.btn-gradient:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(0, 217, 255, 0.35);
+}
+
+.btn-gradient:active {
+  transform: translateY(0);
+}
+
+/* ==============================
+   Theme Toggle — Botão flutuante
+   ============================== */
+
+.theme-toggle {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 999;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  border: 1px solid var(--theme-toggle-border);
+  background: var(--theme-toggle-bg);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  color: inherit;
+  transition: transform 0.3s ease, background 0.3s ease;
+}
+
+.theme-toggle:hover {
+  transform: scale(1.1);
+}
+
+.theme-toggle:active {
+  transform: scale(0.95);
+}
+
+.theme-toggle .theme-icon-light,
+.theme-toggle .theme-icon-dark {
+  position: absolute;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+[data-bs-theme="dark"] .theme-toggle .theme-icon-light {
+  opacity: 1;
+  transform: rotate(0deg);
+}
+
+[data-bs-theme="dark"] .theme-toggle .theme-icon-dark {
+  opacity: 0;
+  transform: rotate(90deg);
+}
+
+[data-bs-theme="light"] .theme-toggle .theme-icon-light {
+  opacity: 0;
+  transform: rotate(-90deg);
+}
+
+[data-bs-theme="light"] .theme-toggle .theme-icon-dark {
+  opacity: 1;
+  transform: rotate(0deg);
+}
+
+/* ==============================
+   Resultado — Card + ícones + animação
+   ============================== */
+
 .result-card {
-  background: var(--bs-body-bg);
-  border: 1px solid var(--bs-border-color);
+  background: var(--result-card-bg);
+  border: 1px solid var(--glass-border);
   border-radius: 0.75rem;
   padding: 1.25rem;
-  animation: fadeSlideIn 0.3s ease-out;
+  animation: fadeSlideIn 0.35s ease-out;
+  box-shadow: var(--glass-shadow);
 }
+
 .result-card.success {
-  border-color: var(--bs-success-border-subtle);
+  border-color: rgba(0, 217, 255, 0.3);
 }
+
 .result-card.not-found {
-  border-color: var(--bs-warning-border-subtle);
+  border-color: rgba(234, 179, 8, 0.3);
 }
+
 .result-card.error {
-  border-color: var(--bs-danger-border-subtle);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+@keyframes fadeSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .result-icon {
@@ -27,30 +256,38 @@
   font-weight: 700;
   flex-shrink: 0;
 }
+
 .result-icon.success-icon {
-  background: var(--bs-success-bg-subtle);
-  color: var(--bs-success);
-}
-.result-icon.not-found-icon {
-  background: var(--bs-warning-bg-subtle);
-  color: var(--bs-warning);
-}
-.result-icon.error-icon {
-  background: var(--bs-danger-bg-subtle);
-  color: var(--bs-danger);
+  background: rgba(0, 217, 255, 0.15);
+  color: #00D9FF;
 }
 
-/* --- Search steps --- */
+.result-icon.not-found-icon {
+  background: rgba(234, 179, 8, 0.15);
+  color: #eab308;
+}
+
+.result-icon.error-icon {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+/* ==============================
+   Steps — Status por servidor
+   ============================== */
+
 .search-steps {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
 }
+
 .step-item {
   display: flex;
   align-items: flex-start;
   gap: 0.75rem;
 }
+
 .step-dot {
   width: 0.625rem;
   height: 0.625rem;
@@ -58,48 +295,62 @@
   flex-shrink: 0;
   margin-top: 0.35rem;
 }
+
 .step-dot.ok {
-  background: var(--bs-success);
+  background: #00D9FF;
+  box-shadow: 0 0 6px rgba(0, 217, 255, 0.5);
 }
+
 .step-dot.miss {
-  background: var(--bs-warning);
+  background: #eab308;
+  box-shadow: 0 0 6px rgba(234, 179, 8, 0.5);
 }
+
 .step-dot.skip {
   background: var(--bs-secondary);
 }
+
 .step-dot.err {
-  background: var(--bs-danger);
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
 }
 
 .step-fonte {
   font-size: 0.875rem;
   font-weight: 500;
 }
+
 .step-status {
   font-size: 0.8125rem;
 }
+
 .step-status.ok {
-  color: var(--bs-success);
+  color: #00D9FF;
 }
+
 .step-status.miss {
-  color: var(--bs-warning);
+  color: #eab308;
 }
+
 .step-status.skip {
   color: var(--bs-secondary);
 }
+
 .step-status.err {
-  color: var(--bs-danger);
+  color: #ef4444;
 }
 
-/* --- Failure reason --- */
+/* ==============================
+   Utilitários — Failure, Download, Progress, Footer
+   ============================== */
+
 .failure-reason {
-  background: var(--bs-warning-bg-subtle);
+  background: rgba(234, 179, 8, 0.1);
   border-radius: 0.5rem;
   padding: 0.5rem 0.75rem;
   font-size: 0.8125rem;
 }
 
-/* --- Download buttons --- */
 .download-buttons {
   display: flex;
   flex-wrap: wrap;
@@ -107,24 +358,14 @@
   margin-bottom: 0.75rem;
 }
 
-/* --- Status details (collapsible) --- */
-.status-details {
-  cursor: pointer;
-}
-.status-details summary {
-  font-size: 0.8125rem;
-}
-.status-details table {
-  font-size: 0.8125rem;
-}
-
-/* --- Search progress (loading state) --- */
 .search-progress {
-  background: var(--bs-body-bg);
-  border: 1px solid var(--bs-border-color);
+  background: var(--result-card-bg);
+  border: 1px solid var(--glass-border);
   border-radius: 0.75rem;
   padding: 1.25rem;
+  box-shadow: var(--glass-shadow);
 }
+
 .progress-step {
   display: flex;
   align-items: center;
@@ -132,14 +373,15 @@
   font-size: 0.875rem;
   color: var(--bs-secondary);
 }
+
 .progress-step.active {
-  color: var(--bs-primary);
+  color: var(--gradient-start);
 }
 
 .step-indicator {
   width: 1rem;
   height: 1rem;
-  border: 2px solid var(--bs-primary);
+  border: 2px solid var(--gradient-start);
   border-top-color: transparent;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
@@ -149,13 +391,50 @@
   to { transform: rotate(360deg); }
 }
 
-@keyframes fadeSlideIn {
-  from {
-    opacity: 0;
-    transform: translateY(0.5rem);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+.footer-credit {
+  letter-spacing: 0.03em;
 }
+
+.status-details {
+  cursor: pointer;
+}
+
+.status-details summary {
+  font-size: 0.8125rem;
+}
+
+.status-details table {
+  font-size: 0.8125rem;
+}
+
+/* ==============================
+   Scrollbar
+   ============================== */
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gradient-start);
+}
+
+/* ==============================
+   Layout — Main, Footer
+   ============================== */
+
+main, footer {
+  position: relative;
+  z-index: 1;
+}
+
+
