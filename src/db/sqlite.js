@@ -30,6 +30,7 @@ export async function initDatabase() {
     token_hash TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     revoked INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id)
   )`);
 
@@ -44,6 +45,13 @@ export async function initDatabase() {
     created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id)
   )`);
+
+  const [cols] = db.exec('PRAGMA table_info(refresh_tokens)');
+  if (!cols?.values?.some((r) => r[1] === 'created_at')) {
+    db.run('ALTER TABLE refresh_tokens ADD COLUMN created_at TEXT');
+  }
+  db.run("DELETE FROM refresh_tokens WHERE expires_at < datetime('now')");
+  db.run("DELETE FROM audit_log WHERE created_at < datetime('now', '-90 days')");
 
   save();
   return db;
@@ -90,6 +98,10 @@ export function logAudit({ user_id, username, action, target, details, ip }) {
     VALUES (?, ?, ?, ?, ?, ?)`,
     [user_id, username, action, target ?? null, details ?? null, ip ?? null],
   );
+
+  run("DELETE FROM refresh_tokens WHERE expires_at < datetime('now')");
+  run("DELETE FROM audit_log WHERE created_at < datetime('now', '-90 days')");
+
   save();
 }
 
