@@ -449,4 +449,20 @@ main, footer {
   z-index: 1;
 }
 
+/* ==============================
+   Login — Erro
+   ============================== */
+
+.login-error {
+  background: var(--status-err-bg);
+  border: 1px solid var(--status-err-border);
+  color: var(--status-err);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.75rem;
+}
+
+[data-bs-theme="dark"] .login-error {
+  color: #fca5a5;
+}
+
 
