@@ -2,7 +2,7 @@ import initSqlJs from 'sql.js';
 import fs from 'fs';
 import path from 'path';
 
-const DB_PATH = '/app/db/app.db';
+const DB_PATH = '/db/app.db';
 
 let db;
 
@@ -30,6 +30,18 @@ export async function initDatabase() {
     token_hash TEXT NOT NULL,
     expires_at TEXT NOT NULL,
     revoked INTEGER DEFAULT 0,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+  )`);
+
+  db.run(`CREATE TABLE IF NOT EXISTS audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    username TEXT NOT NULL,
+    action TEXT NOT NULL,
+    target TEXT,
+    details TEXT,
+    ip TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
     FOREIGN KEY (user_id) REFERENCES users(id)
   )`);
 
@@ -70,6 +82,15 @@ export function all(sql, params = []) {
   while (stmt.step()) rows.push(stmt.getAsObject());
   stmt.free();
   return rows;
+}
+
+export function logAudit({ user_id, username, action, target, details, ip }) {
+  run(
+    `INSERT INTO audit_log (user_id, username, action, target, details, ip) 
+    VALUES (?, ?, ?, ?, ?, ?)`,
+    [user_id, username, action, target ?? null, details ?? null, ip ?? null],
+  );
+  save();
 }
 
 export function run(sql, params = []) {

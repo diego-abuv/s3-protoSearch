@@ -102,12 +102,10 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
       const result = await searchPrefix(p, termoBuscado, signal);
       if (result) abortController.abort();
       return result;
-    })
+    }),
   );
 
-  const arquivosEncontrados = resultadosPrefixo
-    .filter((r) => r !== null)
-    .flat();
+  const arquivosEncontrados = resultadosPrefixo.filter((r) => r !== null).flat();
 
   if (arquivosEncontrados.length === 0) {
     logger.info('Nenhum arquivo encontrado no S3.');

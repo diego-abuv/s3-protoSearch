@@ -11,4 +11,4 @@ services:
       - .env
     volumes:
       - /sharepoint:/sharepoint:ro
-      - /db:/app/db
+      - /db:/db

@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { authMiddleware } from '../middleware/auth.js';
 import { sanitizeError } from '../utils/errorCodes.js';
 import { logger } from '../utils/logger.js';
+import { logAudit } from '../db/sqlite.js';
 
 export function createSearchRoutes(searchableService) {
   const router = Router();
@@ -35,13 +36,29 @@ export function createSearchRoutes(searchableService) {
       const resultado = await searchableService.findFileAndGetSignedUrl(pastaFormatada, nomeProtocolo);
 
       if (resultado.arquivos && resultado.arquivos.length > 0) {
-        return res.json({
+        logAudit({
+          user_id: req.user.id,
+          username: req.user.username,
+          action: 'search',
+          target: `${pasta}/${nomeProtocolo}`,
+          details: `arquivos_encontrados=${resultado.arquivos.length}`,
+          ip: req.ip,
+        });
+        return res.status(200).json({
           encontrado: true,
           arquivos: resultado.arquivos,
           status: resultado.status,
         });
       }
 
+      logAudit({
+        user_id: req.user.id,
+        username: req.user.username,
+        action: 'search',
+        target: `${pasta}/${nomeProtocolo}`,
+        details: 'arquivos_encontrados=0',
+        ip: req.ip,
+      });
       return res.status(404).json({
         encontrado: false,
         arquivos: null,
@@ -49,6 +66,14 @@ export function createSearchRoutes(searchableService) {
       });
     } catch (err) {
       logger.error('Erro não tratado na rota de busca:', err);
+      logAudit({
+        user_id: req.user.id,
+        username: req.user.username,
+        action: 'search',
+        target: `${pasta}/${nomeProtocolo}`,
+        details: sanitizeError(err),
+        ip: req.ip,
+      });
       return res.status(500).json({
         encontrado: false,
         arquivos: null,

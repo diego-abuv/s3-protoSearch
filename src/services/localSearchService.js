@@ -118,7 +118,9 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
             logger.warn(`   [TIMING] listFiles ERRO: ${err.message}`);
             return null;
           }
-          logger.info(`   [TIMING] listFiles: ${allFiles.length} arquivos (${(performance.now() - tList).toFixed(0)}ms)`);
+          logger.info(
+            `   [TIMING] listFiles: ${allFiles.length} arquivos (${(performance.now() - tList).toFixed(0)}ms)`,
+          );
 
           const arquivosEncontrados = [];
           for (const filePath of allFiles) {

@@ -2,20 +2,16 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import { get, run, save } from '../db/sqlite.js'
+import { logAudit, get, run, save } from '../db/sqlite.js';
 import { logger } from '../utils/logger.js';
-import { loginLimiter } from '../middleware/auth.js';
+import { loginLimiter, authMiddleware } from '../middleware/auth.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_EXPIRES = '15m';
 const REFRESH_EXPIRES_DAYS = 7;
 
 function generateAccessToken(user) {
-  return jwt.sign(
-    { id: user.id, username: user.username, role: user.role },
-    JWT_SECRET,
-    { expiresIn: ACCESS_EXPIRES }
-  );
+  return jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
 }
 
 function generateRefreshToken(userId) {
@@ -23,9 +19,7 @@ function generateRefreshToken(userId) {
   const hash = crypto.createHash('sha256').update(raw).digest('hex');
   const expiresAt = new Date(Date.now() + REFRESH_EXPIRES_DAYS * 24 * 60 * 60 * 1000).toISOString();
 
-  run(
-    'INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)'
-  , [userId, hash, expiresAt]);
+  run('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)', [userId, hash, expiresAt]);
   save();
 
   return raw;
@@ -55,7 +49,11 @@ export function createAuthRoutes() {
     }
 
     const password_hash = bcrypt.hashSync(password, 10);
-    run('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)', [username, password_hash, 'user']);
+    run('INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)', [
+      username,
+      password_hash,
+      req.body.role || 'user',
+    ]);
     save();
 
     logger.info(`Novo usuário registrado: ${username}`);
@@ -83,6 +81,13 @@ export function createAuthRoutes() {
       maxAge: REFRESH_EXPIRES_DAYS * 24 * 60 * 60 * 1000,
     });
 
+    logAudit({
+      user_id: user.id,
+      username: user.username,
+      action: 'login',
+      ip: req.ip,
+    });
+
     logger.info(`Login: ${username}`);
     res.json({ access_token: accessToken, expires_in: 900 });
   });
@@ -95,8 +100,9 @@ export function createAuthRoutes() {
     const stored = get(
       `SELECT rt.*, u.username, u.role FROM refresh_tokens rt
        JOIN users u ON u.id = rt.user_id
-       WHERE rt.token_hash = ? AND rt.revoked = 0 AND rt.expires_at > datetime('now')`
-    , [hash]);
+       WHERE rt.token_hash = ? AND rt.revoked = 0 AND rt.expires_at > datetime('now')`,
+      [hash],
+    );
 
     if (!stored) return res.status(401).json({ error: 'refresh token inválido ou expirado' });
 
@@ -115,14 +121,30 @@ export function createAuthRoutes() {
     res.json({ access_token: accessToken, expires_in: 900 });
   });
 
-  router.post('/logout', (req, res) => {
+  router.post('/logout', authMiddleware, (req, res) => {
     const raw = req.cookies?.refresh_token;
     if (raw) {
       revokeRefreshToken(raw);
-      logger.info(`Logout via refresh_token: hash=${crypto.createHash('sha256').update(raw).digest('hex').slice(0, 8)}...`);
+      logger.info(
+        `Logout via refresh_token: hash=${crypto.createHash('sha256').update(raw).digest('hex').slice(0, 8)}...`,
+      );
     }
+
+    const user = get('SELECT * FROM users WHERE username = ?', [req.user.username]);
+
+    logAudit({
+      user_id: user.id,
+      username: user.username,
+      action: 'logout',
+      ip: req.ip,
+    });
+
     res.clearCookie('refresh_token', { path: '/' });
     res.json({ message: 'logout ok' });
+  });
+
+  router.get('/me', authMiddleware, (req, res) => {
+    res.json({ id: req.user.id, username: req.user.username, role: req.user.role });
   });
 
   return router;

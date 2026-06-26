@@ -30,7 +30,9 @@ export async function withRetry(fn, options = {}) {
       }
 
       const delay = baseDelay * Math.pow(2, attempt - 1) + Math.random() * 500;
-      logger.warn(`${label} — Tentativa ${attempt}/${maxRetries} falhou: ${err.message}. Retentando em ${Math.round(delay)}ms...`);
+      logger.warn(
+        `${label} — Tentativa ${attempt}/${maxRetries} falhou: ${err.message}. Retentando em ${Math.round(delay)}ms...`,
+      );
       await new Promise((r) => setTimeout(r, delay));
     }
   }
