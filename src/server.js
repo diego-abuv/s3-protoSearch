@@ -19,7 +19,7 @@ async function startServer() {
   logger.info('Iniciando servidor com serviço de busca unificado (S3 com fallback local)...');
   const searchableService = await import('./services/unifiedSearchService.js');
 
-  const app = createApp(searchableService);
+  const app = await createApp(searchableService);
   const port = process.env.PORT || 80;
   const host = '0.0.0.0';
   const ipLocal = getLocalIp();

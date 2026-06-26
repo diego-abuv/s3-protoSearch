@@ -1,11 +1,23 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
+import { authMiddleware } from '../middleware/auth.js';
 import { sanitizeError } from '../utils/errorCodes.js';
 import { logger } from '../utils/logger.js';
 
 export function createSearchRoutes(searchableService) {
   const router = Router();
 
-  router.post('/buscar-arquivo', async (req, res) => {
+  const searchLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    handler: (req, res) => {
+      res.status(429).json({ error: 'Muitas requisições. Tente novamente em instantes.' });
+    },
+  });
+
+  router.post('/buscar-arquivo', authMiddleware, searchLimiter, async (req, res) => {
     const { pasta, nomeProtocolo } = req.body;
 
     if (!pasta || !nomeProtocolo) {
