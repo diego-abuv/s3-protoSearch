@@ -77,6 +77,7 @@ export function createAuthRoutes() {
     res.cookie('refresh_token', refreshToken, {
       httpOnly: true,
       sameSite: 'strict',
+      secure: process.env.HTTPS === '1', // só envia por HTTPS em prod
       path: '/',
       maxAge: REFRESH_EXPIRES_DAYS * 24 * 60 * 60 * 1000,
     });
@@ -114,6 +115,7 @@ export function createAuthRoutes() {
     res.cookie('refresh_token', newRefreshToken, {
       httpOnly: true,
       sameSite: 'strict',
+      secure: process.env.HTTPS === '1',
       path: '/',
       maxAge: REFRESH_EXPIRES_DAYS * 24 * 60 * 60 * 1000,
     });

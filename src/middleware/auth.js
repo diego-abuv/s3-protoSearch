@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-dev-only';
+const JWT_SECRET = process.env.JWT_SECRET;
 const API_KEY = process.env.API_KEY;
 
 export const loginLimiter = rateLimit({

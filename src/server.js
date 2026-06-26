@@ -16,6 +16,21 @@ function getLocalIp() {
 }
 
 async function startServer() {
+  if (!process.env.JWT_SECRET) {
+    logger.error('JWT_SECRET não configurado ou incorreto.');
+    process.exit(1);
+  }
+
+  if (!process.env.API_KEY) {
+    logger.error('API_KEY não configurado ou incorreto.');
+    process.exit(1);
+  }
+
+  if (!process.env.ADMIN_KEY) {
+    logger.error('ADMIN_KEY não configurado ou incorreto.');
+    process.exit(1);
+  }
+
   logger.info('Iniciando servidor com serviço de busca unificado (S3 com fallback local)...');
   const searchableService = await import('./services/unifiedSearchService.js');
 
