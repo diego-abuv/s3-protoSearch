@@ -8,7 +8,7 @@ import { loginLimiter, authMiddleware } from '../middleware/auth.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_EXPIRES = '15m';
-const REFRESH_EXPIRES_DAYS = 7;
+const REFRESH_EXPIRES_HOURS = 4;
 
 function generateAccessToken(user) {
   return jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
@@ -17,7 +17,7 @@ function generateAccessToken(user) {
 function generateRefreshToken(userId) {
   const raw = crypto.randomBytes(40).toString('hex');
   const hash = crypto.createHash('sha256').update(raw).digest('hex');
-  const expiresAt = new Date(Date.now() + REFRESH_EXPIRES_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const expiresAt = new Date(Date.now() + REFRESH_EXPIRES_HOURS * 60 * 60 * 1000).toISOString();
 
   run('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)', [userId, hash, expiresAt]);
   save();
@@ -79,7 +79,7 @@ export function createAuthRoutes() {
       sameSite: 'strict',
       secure: process.env.HTTPS === '1', // só envia por HTTPS em prod
       path: '/',
-      maxAge: REFRESH_EXPIRES_DAYS * 24 * 60 * 60 * 1000,
+      maxAge: REFRESH_EXPIRES_HOURS * 60 * 60 * 1000,
     });
 
     logAudit({
@@ -117,7 +117,7 @@ export function createAuthRoutes() {
       sameSite: 'strict',
       secure: process.env.HTTPS === '1',
       path: '/',
-      maxAge: REFRESH_EXPIRES_DAYS * 24 * 60 * 60 * 1000,
+      maxAge: REFRESH_EXPIRES_HOURS * 60 * 60 * 1000,
     });
 
     res.json({ access_token: accessToken, expires_in: 900 });

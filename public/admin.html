@@ -145,59 +145,59 @@
       </div>
     </section>
 
-    <!-- Modal editar usuario -->
-    <div class="modal fade" id="modalEditar" tabindex="-1">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content glass-card border-0">
-          <div class="modal-header border-0">
-            <h5 class="modal-title gradient-text">Editar usuario</h5>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body">
-            <input type="hidden" id="editUserId">
-            <div class="mb-3">
-              <label class="form-label small">Username</label>
-              <input type="text" class="form-control form-control-sm glass-input" id="editUsername">
-            </div>
-            <div class="mb-3">
-              <label class="form-label small">Role</label>
-              <select class="form-select form-select-sm glass-input" id="editRole">
-                <option value="user">user</option>
-                <option value="admin">admin</option>
-              </select>
-            </div>
-            <div id="editUserError" class="text-danger small d-none"></div>
-          </div>
-          <div class="modal-footer border-0">
-            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-            <button type="button" class="btn btn-sm btn-gradient" id="btnSalvarEdicao">Salvar</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Modal confirmar exclusao -->
-    <div class="modal fade" id="modalExcluir" tabindex="-1">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content glass-card border-0">
-          <div class="modal-header border-0">
-            <h5 class="modal-title text-danger">Confirmar exclusao</h5>
-            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body">
-            <p class="text-secondary">Tem certeza que deseja excluir o usuario <strong id="deleteUserName"></strong>?</p>
-            <input type="hidden" id="deleteUserId">
-            <div id="deleteUserError" class="text-danger small d-none"></div>
-          </div>
-          <div class="modal-footer border-0">
-            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
-            <button type="button" class="btn btn-sm btn-danger" id="btnConfirmarExclusao">Excluir</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
   </main>
+
+  <!-- Modal editar usuario -->
+  <div class="modal fade" id="modalEditar" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content glass-card border-0">
+        <div class="modal-header border-0">
+          <h5 class="modal-title gradient-text">Editar usuario</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" id="editUserId">
+          <div class="mb-3">
+            <label class="form-label small">Username</label>
+            <input type="text" class="form-control form-control-sm glass-input" id="editUsername">
+          </div>
+          <div class="mb-3">
+            <label class="form-label small">Role</label>
+            <select class="form-select form-select-sm glass-input" id="editRole">
+              <option value="user">user</option>
+              <option value="admin">admin</option>
+            </select>
+          </div>
+          <div id="editUserError" class="text-danger small d-none"></div>
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-sm btn-gradient" id="btnSalvarEdicao">Salvar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal confirmar exclusao -->
+  <div class="modal fade" id="modalExcluir" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content glass-card border-0">
+        <div class="modal-header border-0">
+          <h5 class="modal-title text-danger">Confirmar exclusao</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-secondary">Tem certeza que deseja excluir o usuario <strong id="deleteUserName"></strong>?</p>
+          <input type="hidden" id="deleteUserId">
+          <div id="deleteUserError" class="text-danger small d-none"></div>
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-sm btn-danger" id="btnConfirmarExclusao">Excluir</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <footer class="text-center pt-4 pb-2">
     <span class="text-secondary small footer-credit">Desenvolvido por Diego Bueno</span>
