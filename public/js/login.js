@@ -1,5 +1,8 @@
 // login.js — Lógica da página de login
-const redirectUrl = new URLSearchParams(window.location.search).get('redirect') || '/';
+const redirectUrl = (() => {
+  const r = new URLSearchParams(window.location.search).get('redirect') || '/';
+  return r.startsWith('/') ? r : '/';
+})();
 
 (async () => {
   const user = await Auth.checkSession();

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import rateLimit from 'express-rate-limit';
 import { logAudit, get, run, save } from '../db/sqlite.js';
 import { logger } from '../utils/logger.js';
 import { loginLimiter, authMiddleware } from '../middleware/auth.js';
@@ -34,7 +35,13 @@ function revokeRefreshToken(raw) {
 export function createAuthRoutes() {
   const router = Router();
 
-  router.post('/register', (req, res) => {
+  const registerLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 3,
+    message: { error: 'Muitas tentativas de registro. Tente novamente daqui um minuto.' },
+  });
+
+  router.post('/register', registerLimiter, (req, res) => {
     const { username, password, adminKey } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'username e password obrigatórios' });
@@ -127,9 +134,7 @@ export function createAuthRoutes() {
     const raw = req.cookies?.refresh_token;
     if (raw) {
       revokeRefreshToken(raw);
-      logger.info(
-        `Logout via refresh_token: hash=${crypto.createHash('sha256').update(raw).digest('hex').slice(0, 8)}...`,
-      );
+      logger.info('Logout realizado');
     }
 
     const user = get('SELECT * FROM users WHERE username = ?', [req.user.username]);
