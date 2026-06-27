@@ -45,16 +45,18 @@
               <div class="row g-3">
                 <div class="col-sm-5">
                   <label for="data" class="form-label small fw-medium">Data do protocolo</label>
-                  <input type="date" class="form-control glass-input" id="data" required>
+                  <input type="date" class="form-control glass-input" id="data" max="9999-12-31" required>
+                  <div class="invalid-feedback">Selecione uma data.</div>
                 </div>
                 <div class="col-sm-7">
                   <label for="nomeProtocolo" class="form-label small fw-medium">Nome do arquivo</label>
-                  <div class="input-group">
+                  <div class="input-group flex-wrap">
                     <input type="text" class="form-control glass-input" id="nomeProtocolo" placeholder="Ex: 0385406313" required>
                     <button type="submit" class="btn btn-gradient px-4" id="btnBuscar">
                       <span id="btn-text">Buscar</span>
                       <span id="btn-spinner" class="spinner-border spinner-border-sm d-none"></span>
                     </button>
+                    <div class="invalid-feedback w-100">Informe o nome do arquivo.</div>
                   </div>
                 </div>
               </div>

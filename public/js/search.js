@@ -3,6 +3,15 @@ const resultadoDiv = document.getElementById('resultado');
 const btnBuscar = document.getElementById('btnBuscar');
 const btnText = document.getElementById('btn-text');
 const btnSpinner = document.getElementById('btn-spinner');
+const dataInput = document.getElementById('data');
+
+dataInput.addEventListener('paste', (e) => {
+  const text = (e.clipboardData || window.clipboardData).getData('text');
+  if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) {
+    e.preventDefault();
+    dataInput.value = text.replace(/\//g, '-');
+  }
+});
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();

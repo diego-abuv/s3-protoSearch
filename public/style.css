@@ -652,4 +652,23 @@ main, footer {
   opacity: 0.6;
 }
 
+/* ==============================
+   Form — Input group & Validation
+   ============================== */
+
+#btnBuscar {
+  border-top-right-radius: var(--bs-border-radius);
+  border-bottom-right-radius: var(--bs-border-radius);
+}
+
+.input-group.flex-wrap {
+  flex-wrap: wrap;
+}
+
+input[type="date"].was-validated:invalid,
+input[type="date"].is-invalid {
+  padding-right: 0.75rem;
+  background-image: none;
+}
+
 
