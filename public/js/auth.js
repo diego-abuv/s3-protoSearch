@@ -94,6 +94,14 @@ const Auth = (() => {
   }
 
   async function authFetch(url, options = {}) {
+    if (!accessToken) {
+      const refreshed = await refreshSession();
+      if (!refreshed) {
+        window.location.href = '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
+        throw new Error('Sessão expirada');
+      }
+    }
+
     const headers = { ...options.headers, 'Authorization': `Bearer ${accessToken}` };
     const response = await fetch(url, { ...options, headers });
 

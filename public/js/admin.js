@@ -44,7 +44,9 @@ async function loadStats() {
     document.getElementById('statLogs').textContent = data.audit_logs;
     document.getElementById('statSessions').textContent = data.active_sessions;
   } catch (_e) {
-    // ignora
+    document.getElementById('statUsers').textContent = 'Erro';
+    document.getElementById('statLogs').textContent = 'Erro';
+    document.getElementById('statSessions').textContent = 'Erro';
   }
 }
 
@@ -204,9 +206,14 @@ async function loadAudit(append) {
   }
 }
 
-document.getElementById('btnCarregarMais').addEventListener('click', () => {
+document.getElementById('btnCarregarMais').addEventListener('click', async () => {
+  const btn = document.getElementById('btnCarregarMais');
+  btn.disabled = true;
+  btn.textContent = 'Carregando...';
   auditOffset += AUDIT_LIMIT;
-  loadAudit(true);
+  await loadAudit(true);
+  btn.disabled = false;
+  btn.textContent = 'Carregar mais';
 });
 
 // ── Init ───────────────────────────────────────────────

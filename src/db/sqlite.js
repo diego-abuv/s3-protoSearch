@@ -51,6 +51,7 @@ export async function initDatabase() {
     db.run('ALTER TABLE refresh_tokens ADD COLUMN created_at TEXT');
   }
   db.run("DELETE FROM refresh_tokens WHERE expires_at < datetime('now')");
+  db.run('DELETE FROM refresh_tokens');
   db.run("DELETE FROM audit_log WHERE created_at < datetime('now', '-90 days')");
 
   save();
