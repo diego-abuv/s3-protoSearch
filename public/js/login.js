@@ -1,8 +1,10 @@
 // login.js — Lógica da página de login
+const redirectUrl = new URLSearchParams(window.location.search).get('redirect') || '/';
+
 (async () => {
   const user = await Auth.checkSession();
   if (user) {
-    window.location.href = '/';
+    window.location.href = redirectUrl;
     return;
   }
 })();
@@ -29,7 +31,13 @@ form.addEventListener('submit', async (event) => {
 
   try {
     await Auth.login(username, password);
-    window.location.href = '/';
+    const token = Auth.getAccessToken();
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    if (payload.role === 'admin' && redirectUrl === '/') {
+      window.location.href = '/admin.html';
+    } else {
+      window.location.href = redirectUrl;
+    }
   } catch (err) {
     loginError.textContent = err.message;
     loginError.classList.remove('d-none');

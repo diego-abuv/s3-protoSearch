@@ -441,6 +441,148 @@ body {
 }
 
 /* ==============================
+   Layout — Navbar
+   ============================== */
+
+.navbar-glass {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 1001;
+  padding: 0.5rem 1rem;
+  background: transparent;
+}
+
+/* ==============================
+   User Menu — Avatar + Dropdown
+   ============================== */
+
+.user-menu {
+  position: relative;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.user-menu-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: 2rem;
+  padding: 0.2rem 0.4rem 0.2rem 0.2rem;
+  cursor: pointer;
+  transition: box-shadow 0.3s ease;
+}
+
+.user-menu-toggle:hover {
+  box-shadow: 0 0 12px var(--glow-1);
+}
+
+.user-avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+}
+
+.user-chevron {
+  font-size: 0.65rem;
+  color: var(--gradient-start);
+  transition: transform 0.2s ease;
+}
+
+.user-menu:hover .user-chevron,
+.user-menu.open .user-chevron {
+  transform: rotate(180deg);
+}
+
+.user-dropdown::before {
+  content: '';
+  position: absolute;
+  top: -0.5rem;
+  right: 0;
+  height: 0.5rem;
+}
+
+.user-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  right: 0;
+  min-width: 12rem;
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: 0.75rem;
+  box-shadow: var(--glass-shadow);
+  padding: 0.5rem 0;
+  z-index: 1000;
+}
+
+.user-dropdown::before {
+  content: '';
+  position: absolute;
+  top: -0.5rem;
+  left: 0;
+  right: 0;
+  height: 0.5rem;
+}
+
+.user-menu:hover .user-dropdown,
+.user-menu.open .user-dropdown {
+  display: block;
+}
+
+.user-dropdown-info {
+  padding: 0.4rem 1rem;
+  font-size: 0.8rem;
+  color: var(--gradient-start);
+  font-weight: 500;
+}
+
+.user-role {
+  opacity: 0.6;
+  font-size: 0.7rem;
+}
+
+.user-dropdown-divider {
+  height: 1px;
+  background: var(--glass-border);
+  margin: 0.3rem 0;
+}
+
+.user-dropdown-item {
+  display: block;
+  width: 100%;
+  padding: 0.4rem 1rem;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 0.8rem;
+  color: var(--status-err);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.user-dropdown-item:hover {
+  background: var(--status-err-bg);
+}
+
+/* Theme toggle desce quando navbar está presente */
+.navbar-glass ~ .theme-toggle {
+  top: 3.5rem;
+}
+
+/* ==============================
    Layout — Main, Footer
    ============================== */
 
@@ -463,6 +605,51 @@ main, footer {
 
 [data-bs-theme="dark"] .login-error {
   color: #fca5a5;
+}
+
+/* ==============================
+   Admin — Tabela glass
+   ============================== */
+
+.glass-table {
+  --bs-table-bg: transparent;
+  --bs-table-color: inherit;
+  --bs-table-border-color: var(--glass-border);
+  margin-bottom: 0;
+}
+
+.glass-table thead th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--gradient-start);
+  font-weight: 600;
+  border-bottom: 1px solid var(--glass-border);
+  padding: 0.6rem 0.75rem;
+}
+
+.glass-table tbody td {
+  padding: 0.5rem 0.75rem;
+  vertical-align: middle;
+  font-size: 0.85rem;
+}
+
+.glass-table tbody tr:hover {
+  background: rgba(0, 217, 255, 0.04);
+}
+
+/* ==============================
+   Admin — Modal glass
+   ============================== */
+
+.modal-content.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.modal-backdrop.show {
+  opacity: 0.6;
 }
 
 

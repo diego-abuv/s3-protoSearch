@@ -27,7 +27,7 @@ form.addEventListener('submit', async (event) => {
   const duracao = () => ((performance.now() - inicio) / 1000).toFixed(2);
 
   try {
-    const response = await fetch('/buscar-arquivo', {
+    const response = await Auth.authFetch('/buscar-arquivo', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pasta, nomeProtocolo }),

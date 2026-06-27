@@ -59,7 +59,29 @@ function buildStep(fonte, status) {
 function buildDownloadButton(arquivo) {
   const tmpl = document.getElementById('tmpl-download-btn').content.cloneNode(true);
   const a = tmpl.querySelector('a');
-  a.href = escapeHtml(arquivo.downloadUrl);
   a.textContent += escapeHtml(arquivo.nomeParaDownload);
+
+  if (arquivo.downloadUrl.startsWith('/download-local')) {
+    a.href = '#';
+    a.addEventListener('click', async (e) => {
+      e.preventDefault();
+      try {
+        const response = await Auth.authFetch(arquivo.downloadUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const tmp = document.createElement('a');
+        tmp.href = url;
+        tmp.download = arquivo.nomeParaDownload;
+        tmp.click();
+        URL.revokeObjectURL(url);
+      } catch (_err) {
+        alert('Falha ao baixar arquivo');
+      }
+    });
+  } else {
+    a.href = escapeHtml(arquivo.downloadUrl);
+  }
+
   return tmpl;
 }

@@ -99,7 +99,7 @@ const Auth = (() => {
 
     if (response.status === 401) {
       clearSession();
-      window.location.href = '/login.html';
+      window.location.href = '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
       throw new Error('Sessão expirada');
     }
 
@@ -112,7 +112,7 @@ const Auth = (() => {
       const success = await refreshSession();
       if (!success) {
         clearSession();
-        window.location.href = '/login.html';
+        window.location.href = '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
       }
     }, REFRESH_BEFORE_EXPIRY_MS);
   }
