@@ -142,11 +142,9 @@ export function createAuthRoutes() {
       logger.info('Logout realizado');
     }
 
-    const user = get('SELECT * FROM users WHERE username = ?', [req.user.username]);
-
     logAudit({
-      user_id: user.id,
-      username: user.username,
+      user_id: req.user.id,
+      username: req.user.username,
       action: 'logout',
       ip: req.ip,
     });

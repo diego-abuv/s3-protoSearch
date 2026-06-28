@@ -80,7 +80,7 @@ function buildDownloadButton(arquivo) {
       }
     });
   } else {
-    a.href = escapeHtml(arquivo.downloadUrl);
+    a.href = arquivo.downloadUrl;
   }
 
   return tmpl;
