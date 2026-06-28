@@ -5,6 +5,7 @@ import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import { logAudit, get, run, save } from '../db/sqlite.js';
 import { logger } from '../utils/logger.js';
+import { validatePassword } from '../utils/validation.js';
 import { loginLimiter, authMiddleware } from '../middleware/auth.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -46,6 +47,10 @@ export function createAuthRoutes() {
     if (!username || !password) {
       return res.status(400).json({ error: 'username e password obrigatórios' });
     }
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return res.status(400).json({ error: passwordError });
+    }
     if (adminKey !== process.env.ADMIN_KEY) {
       return res.status(403).json({ error: 'chave de admin inválida' });
     }
@@ -84,7 +89,7 @@ export function createAuthRoutes() {
     res.cookie('refresh_token', refreshToken, {
       httpOnly: true,
       sameSite: 'strict',
-      secure: process.env.HTTPS === '1', // só envia por HTTPS em prod
+      secure: true,
       path: '/',
       maxAge: REFRESH_EXPIRES_HOURS * 60 * 60 * 1000,
     });
@@ -122,7 +127,7 @@ export function createAuthRoutes() {
     res.cookie('refresh_token', newRefreshToken, {
       httpOnly: true,
       sameSite: 'strict',
-      secure: process.env.HTTPS === '1',
+      secure: true,
       path: '/',
       maxAge: REFRESH_EXPIRES_HOURS * 60 * 60 * 1000,
     });

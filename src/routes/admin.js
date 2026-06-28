@@ -2,6 +2,7 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.js';
 import { all, get, run, save, logAudit } from '../db/sqlite.js';
+import { validatePassword } from '../utils/validation.js';
 
 export function createAdminRoutes() {
   const router = express.Router();
@@ -17,6 +18,10 @@ export function createAdminRoutes() {
     const { username, password, role } = req.body;
     if (!username || !password) {
       return res.status(400).json({ error: 'username e password são obrigatórios' });
+    }
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      return res.status(400).json({ error: passwordError });
     }
     const existing = get('SELECT id FROM users WHERE username = ?', [username]);
     if (existing) {

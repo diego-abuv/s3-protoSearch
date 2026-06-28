@@ -34,6 +34,7 @@ export function apiKeyMiddleware(req, res, next) {
   if (!apiKey || apiKey !== API_KEY) {
     return res.status(403).json({ error: 'API key inválida' });
   }
+  req.user = { id: 0, username: 'api', role: 'api' };
   next();
 }
 

@@ -3,6 +3,6 @@ s3-protosearch.local {
     reverse_proxy s3-localsearch:80
 }
 
-s3-protosearch.local:80 {
+:80 {
     redir https://s3-protosearch.local{uri} 301
 }
