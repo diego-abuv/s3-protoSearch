@@ -37,7 +37,6 @@ Aplicação web containerizada para busca unificada de arquivos de áudio/docume
 - **Rate limiting**: Login (5/min), registro (3/min), busca (30/min) — proteção contra brute force.
 - **Password policy**: Senha forte (6+ caracteres, maiúscula, minúscula, número, símbolo).
 - **Audit logging**: Todas as ações sensíveis registradas no SQLite com rotação de 90 dias.
-- **HTTPS + HSTS**: Caddy sidecar com TLS, redirect automático e Strict-Transport-Security.
 - **CSP**: Content-Security-Policy bloqueia scripts inline e XSS.
 - **RBAC**: Roles `user` e `admin` — acesso a dados restrito por middleware.
 - **Interface glassmorphism**: Tema escuro (TRON) e claro, toggle com persistência em localStorage.
@@ -50,16 +49,11 @@ Aplicação web containerizada para busca unificada de arquivos de áudio/docume
 
 ```mermaid
 graph TD
-    U[Usuário navegador] --> C[Caddy :443]
-    N[n8n / RocketChat] -->|x-api-key| C
-    C -->|HTTPS| E[Express]
-
-    subgraph "Caddy"
-        C80[":80 redirect"] -.->|301| C
-    end
+    U[Usuário navegador] -->|HTTP :3000| E[Express]
+    N[n8n / RocketChat] -->|x-api-key| E
 
     subgraph "Express"
-        MW["Security Headers<br/>CSP / HSTS / X-Frame"]
+        MW["Security Headers<br/>CSP / X-Frame / X-Content-Type"]
         STATIC["Static Files<br/>login.html / admin.html / index.html"]
         
         subgraph "Auth"
@@ -107,8 +101,6 @@ graph TD
     DB --> USERS[users]
     DB --> TOKENS[refresh_tokens<br/>expired cleanup]
 
-    style C fill:#009688,stroke:#fff,stroke-width:2px
-    style C80 fill:#607D8B,stroke:#fff,stroke-width:1px
     style E fill:#4CAF50,stroke:#333,stroke-width:2px
     style S3 fill:#FF9800,stroke:#333,stroke-width:2px
     style DB fill:#9C27B0,stroke:#fff,stroke-width:2px
@@ -123,7 +115,7 @@ graph TD
 | Node.js 20 + Express 5 | Servidor HTTP |
 | AWS SDK v3 (@aws-sdk/client-s3) | Cliente S3 com signed URLs |
 | Docker + docker-compose | Containerização |
-| Caddy 2 | Reverse proxy, TLS interno (self-signed), redirect HTTP→HTTPS |
+| — | Sem proxy reverso — HTTPS indisponível (domínio interno sem ADCS) |
 | Bootstrap 5.3.3 (local) | UI components |
 | CSS3 (custom) | Glassmorphism, theme toggle, TRON palette |
 
@@ -133,7 +125,7 @@ graph TD
 
 ```
 # Servidor
-PORT=80
+PORT=3000
 NODE_ENV=busca-ligacoes
 
 # AWS S3
@@ -159,7 +151,7 @@ ADMIN_KEY=chave-para-criar-usuarios
 
 | Variável | Obrigatório | Descrição |
 |----------|------------|-----------|
-| `PORT` | Sim | Porta do servidor (exposta internamente, Caddy na 80/443) |
+| `PORT` | Sim | Porta do servidor (padrão 3000) |
 | `NODE_ENV` | Não | `busca-ligacoes` ativa download local |
 | `AWS_*` | Sim | Credenciais + bucket + região |
 | `PATH_<ID>` | Condicional | Caminho base + subpastas (após vírgula) |
@@ -176,11 +168,9 @@ O sistema testa 4 variações de data (`YYYY/M/D`, `YYYY/M/DD`, `YYYY/MM/DD`, `Y
 
 | Medida | Implementação |
 |--------|--------------|
-| **HTTPS** | Caddy sidecar com `tls internal` + redirect automático HTTP→HTTPS |
-| **HSTS** | `Strict-Transport-Security: max-age=31536000; includeSubDomains` (sempre ativo) |
 | **CSP** | `script-src 'self'` — bloqueia inline scripts e XSS |
 | **JWT** | Access token em memória (nunca localStorage/sessionStorage) |
-| **Refresh token** | Cookie httpOnly + SameSite=Strict + Secure + rotação (invalida após uso) |
+| **Refresh token** | Cookie httpOnly + SameSite=Strict + rotação (invalida após uso) |
 | **Rate limit** | Login (5/min), Register (3/min), Busca (30/min) |
 | **Password policy** | Mínimo 6 caracteres, maiúscula, minúscula, número e símbolo |
 | **RBAC** | Roles `user` e `admin` — admin routes protegidas por `adminMiddleware` |
@@ -189,6 +179,15 @@ O sistema testa 4 variações de data (`YYYY/M/D`, `YYYY/M/DD`, `YYYY/MM/DD`, `Y
 | **Audit logging** | Todas ações sensíveis (login, logout, busca, admin CRUD) registradas no SQLite |
 | **Secrets** | `JWT_SECRET`, `API_KEY`, `ADMIN_KEY` validados na inicialização — sem fallback |
 | **Limpeza** | Refresh tokens expirados e audit logs > 90 dias removidos automaticamente |
+
+> **Nota sobre a ausência de HTTPS:** A aplicação opera em rede corporativa interna
+> (`matriz.empresa.local`) sem certificado confiável (ADCS não disponível,
+> Let's Encrypt inviável para domínio interno). Credenciais trafegam em texto plano —
+> risco aceito e mitigado por:
+> - Rede isolada (sem saída para internet)
+> - Acesso físico/AD controlado
+> - Rate limiting contra brute force
+> - Refresh token com rotação + expiração curta (4h)
 
 ---
 
@@ -199,7 +198,6 @@ s3-protoSearch/
 ├── assets/                       # Screenshots do README
 ├── .env.example                  # Template de configuração
 ├── .gitattributes                # Normalização LF
-├── Caddyfile                     # Reverse proxy com TLS
 ├── docker-compose.yml            # Orquestração Docker
 ├── Dockerfile                    # Node 20-alpine
 ├── src/
@@ -248,7 +246,7 @@ s3-protoSearch/
 ```json
 { "access_token": "eyJ...", "expires_in": 900 }
 ```
-Define o cookie `refresh_token` (httpOnly, secure, sameSite=strict) com duração de 4 horas.
+Define o cookie `refresh_token` (httpOnly, sameSite=strict) com duração de 4 horas.
 
 #### `POST /refresh`
 (Não requer body — lê o `refresh_token` do cookie)
@@ -454,50 +452,19 @@ docker compose up -d --build
 ### 5. Criar primeiro usuário admin
 
 ```bash
-curl -k -X POST https://s3-protosearch.local/register \
+curl -X POST http://<ip-do-servidor>:3000/register \
   -H "Content-Type: application/json" \
   -d '{"username":"admin","password":"Admin@123","adminKey":"SUA_ADMIN_KEY"}'
 ```
 
-### 6. Acesso DNS
-
-**Sem servidor DNS (teste local):** edite o arquivo `hosts` da máquina:
-
-```bash
-echo '127.0.0.1 s3-protosearch.local' | sudo tee -a /etc/hosts
-```
-
-Acesse: `https://s3-protosearch.local`
-
-> O Caddy gera certificado auto-assinado (`tls internal`). O navegador exibirá um aviso — prossiga com "Avançado → Prosseguir".
-
-**Com servidor DNS corporativo (AD Samba, Windows Server, BIND):**
-
-Crie um registro **A** apontando o hostname para o IP do servidor:
-
-| Campo | Exemplo |
-|-------|---------|
-| Nome | `s3-protosearch` |
-| Domínio | `intranet.empresa.com` |
-| Tipo | `A` |
-| Valor | `192.168.x.x` (IP do servidor) |
-
-Após criado, ajuste o `Caddyfile` com o hostname real:
+### 6. Acesso
 
 ```
-s3-protosearch.intranet.empresa.com {
-    tls internal          # manter enquanto não houver certificado válido
-    reverse_proxy s3-localsearch:80
-}
+http://<ip-do-servidor>:3000
 ```
 
-### 7. Certificado TLS (produção)
-
-| Cenário | Ação no Caddyfile |
-|---------|------------------|
-| **DNS público** | Remover `tls internal` — Caddy obtém Let's Encrypt automaticamente |
-| **CA corporativa** | `tls /caminho/cert.pem /caminho/key.pem` |
-| **Teste/self-signed** | Manter `tls internal` (padrão) |
+> Sem HTTPS (rede corporativa interna, sem certificado confiável).  
+> Credenciais trafegam em texto plano — ver nota de segurança acima.
 
 ---
 
@@ -509,7 +476,7 @@ cp .env.example .env            # Configure suas credenciais
 npm run dev                     # Node --watch com auto-restart
 ```
 
-> Em desenvolvimento sem Docker, o Caddy não está disponível. Acesse via `http://localhost:PORT`. O cookie refresh_token não terá a flag `secure` (esperado para HTTP local).
+> Acesse via `http://localhost:PORT`.
 
 ---
 
