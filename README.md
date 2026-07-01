@@ -142,6 +142,10 @@ AWS_SECRET_ACCESS_KEY=SEU_SECRET_KEY
 AWS_BUCKET_NAME=nome-do-bucket
 AWS_REGION=sa-east-1
 
+# URL pública (log de inicialização)
+PUBLIC_PROTOCOL=http
+PUBLIC_HOST=localhost
+
 # Busca Local 
 PATH_X5=/sharepoint/pastaPrincipal
 YEARS_X5=2021,2022,2023,2024
@@ -161,6 +165,8 @@ ADMIN_KEY=chave-para-criar-usuarios
 |----------|------------|-----------|
 | `PORT` | Sim | Porta do servidor (exposta internamente, Caddy na 80/443) |
 | `NODE_ENV` | Não | `busca-ligacoes` ativa download local |
+| `PUBLIC_PROTOCOL` | Não | Protocolo público (`http`/`https`), exibido no log |
+| `PUBLIC_HOST` | Não | Host público (IP ou DNS), exibido no log |
 | `AWS_*` | Sim | Credenciais + bucket + região |
 | `PATH_<ID>` | Condicional | Caminho base + subpastas (após vírgula) |
 | `YEARS_<ID>` | Condicional | Anos associados ao `PATH_<ID>` |
