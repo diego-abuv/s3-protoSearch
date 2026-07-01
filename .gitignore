@@ -1,5 +1,2 @@
 node_modules/
 .env
-Caddyfile
-*.bundle
-session-ses_*.md
