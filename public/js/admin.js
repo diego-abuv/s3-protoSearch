@@ -121,6 +121,7 @@ document.getElementById('usersTableBody').addEventListener('click', (e) => {
     document.getElementById('editUserId').value = btn.dataset.id;
     document.getElementById('editUsername').value = btn.dataset.username;
     document.getElementById('editRole').value = btn.dataset.role;
+    document.getElementById('editPassword').value = '';
     document.getElementById('editUserError').classList.add('d-none');
     new bootstrap.Modal(document.getElementById('modalEditar')).show();
   }
@@ -129,8 +130,14 @@ document.getElementById('usersTableBody').addEventListener('click', (e) => {
 document.getElementById('btnSalvarEdicao').addEventListener('click', async () => {
   const id = document.getElementById('editUserId').value;
   const username = document.getElementById('editUsername').value.trim();
+  const password = document.getElementById('editPassword').value.trim();
   const role = document.getElementById('editRole').value;
   const errEl = document.getElementById('editUserError');
+  const payload = { username, role };
+
+  if (password) {
+    payload.password = password;
+  }
 
   if (!username) {
     errEl.textContent = 'Username nao pode ser vazio';
@@ -139,7 +146,7 @@ document.getElementById('btnSalvarEdicao').addEventListener('click', async () =>
   }
 
   try {
-    await API.patch(`/admin/users/${id}`, { username, role });
+    await API.patch(`/admin/users/${id}`, payload);
     bootstrap.Modal.getInstance(document.getElementById('modalEditar')).hide();
     loadUsers();
   } catch (err) {
