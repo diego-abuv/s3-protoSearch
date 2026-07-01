@@ -48,25 +48,40 @@ export function createAdminRoutes() {
   });
 
   router.patch('/admin/users/:id', authMiddleware, adminMiddleware, (req, res) => {
-    // Lógica para atualizar um usuário (role ou username)
-    const { username, role } = req.body;
+    const { username, password, role } = req.body;
     const user = get('SELECT * FROM users WHERE id = ?', [req.params.id]);
-    if (!user) {
-      return res.status(404).json({ error: 'Usuário não encontrado' });
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    const updates = [];
+    const params = [];
+
+    if (username) {
+      updates.push('username = ?');
+      params.push(username);
     }
-    run('UPDATE users SET username = ?, role = ? WHERE id = ?', [
-      username || user.username,
-      role || user.role,
-      req.params.id,
-    ]);
-    save();
+    if (role) {
+      updates.push('role = ?');
+      params.push(role);
+    }
+    if (password) {
+      const passwordError = validatePassword(password);
+      if (passwordError) return res.status(400).json({ error: passwordError });
+      updates.push('password_hash = ?');
+      params.push(bcrypt.hashSync(password, 10));
+    }
+
+    if (updates.length > 0) {
+      params.push(req.params.id);
+      run(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, params);
+      save();
+    }
 
     logAudit({
       user_id: req.user.id,
       username: req.user.username,
       action: 'admin_update_user',
       target: user.username,
-      details: `new_username=${username || user.username}, new_role=${role || user.role}`,
+      details: `username=${username || user.username}, role=${role || user.role}${password ? ', password=changed' : ''}`,
       ip: req.ip,
     });
 
