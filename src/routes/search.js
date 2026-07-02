@@ -33,17 +33,24 @@ export function createSearchRoutes(searchableService) {
     try {
       const pastaFormatada = pasta.replace(/-/g, '/');
 
+      const start = performance.now();
       const resultado = await searchableService.findFileAndGetSignedUrl(pastaFormatada, nomeProtocolo);
+      const elapsed = ((performance.now() - start) / 1000).toFixed(2);
 
-      if (resultado.arquivos && resultado.arquivos.length > 0) {
-        logAudit({
-          user_id: req.user.id,
-          username: req.user.username,
-          action: 'search',
-          target: `${pasta}/${nomeProtocolo}`,
-          details: `arquivos_encontrados=${resultado.arquivos.length}`,
-          ip: req.ip,
-        });
+      const found = resultado.arquivos && resultado.arquivos.length > 0;
+      const count = resultado.arquivos?.length || 0;
+      const details = `encontrados=${count}, tempo=${elapsed}s, s3=${resultado.status.s3}, local=${resultado.status.local}`;
+
+      logAudit({
+        user_id: req.user.id,
+        username: req.user.username,
+        action: 'search',
+        target: `${pasta}/${nomeProtocolo}`,
+        details,
+        ip: req.ip,
+      });
+
+      if (found) {
         return res.status(200).json({
           encontrado: true,
           arquivos: resultado.arquivos,
@@ -51,14 +58,6 @@ export function createSearchRoutes(searchableService) {
         });
       }
 
-      logAudit({
-        user_id: req.user.id,
-        username: req.user.username,
-        action: 'search',
-        target: `${pasta}/${nomeProtocolo}`,
-        details: 'arquivos_encontrados=0',
-        ip: req.ip,
-      });
       return res.status(404).json({
         encontrado: false,
         arquivos: null,
@@ -71,7 +70,7 @@ export function createSearchRoutes(searchableService) {
         username: req.user.username,
         action: 'search',
         target: `${pasta}/${nomeProtocolo}`,
-        details: sanitizeError(err),
+        details: `erro=${sanitizeError(err)}`,
         ip: req.ip,
       });
       return res.status(500).json({

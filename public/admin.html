@@ -130,11 +130,10 @@
                   <th>Usuario</th>
                   <th>Acao</th>
                   <th>Detalhes</th>
-                  <th>IP</th>
                 </tr>
               </thead>
               <tbody id="auditTableBody">
-                <tr><td colspan="5" class="text-center text-secondary py-3">Carregando...</td></tr>
+                <tr><td colspan="4" class="text-center text-secondary py-3">Carregando...</td></tr>
               </tbody>
             </table>
           </div>
@@ -177,6 +176,43 @@
         <div class="modal-footer border-0">
           <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
           <button type="button" class="btn btn-sm btn-gradient" id="btnSalvarEdicao">Salvar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal detalhes auditoria -->
+  <div class="modal fade" id="modalAuditDetail" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content glass-card border-0">
+        <div class="modal-header border-0">
+          <h5 class="modal-title gradient-text" id="ad-title">Detalhes da Consulta</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2"><span class="text-secondary small">Data/Hora:</span><br><span id="ad-data"></span></div>
+          <div class="mb-2"><span class="text-secondary small">Usuario:</span><br><span id="ad-usuario"></span></div>
+          <div class="mb-2"><span class="text-secondary small">Acao:</span><br><span id="ad-acao"></span></div>
+          <div class="mb-2"><span class="text-secondary small">IP:</span><br><span id="ad-ip"></span></div>
+
+          <hr class="border-secondary opacity-25" id="ad-search-hr">
+
+          <div id="ad-search-fields">
+            <div class="mb-2"><span class="text-secondary small">Termo:</span><br><span id="ad-termo"></span></div>
+            <div class="mb-2"><span class="text-secondary small">Protocolo:</span><br><span id="ad-protocolo"></span></div>
+            <div class="mb-2"><span class="text-secondary small">Duracao:</span><br><span id="ad-duracao"></span></div>
+            <div class="mb-2"><span class="text-secondary small">Arquivos encontrados:</span><br><span id="ad-encontrados"></span></div>
+            <div class="mb-2"><span class="text-secondary small">Servidores consultados:</span></div>
+            <div id="ad-servidores" class="ms-2"></div>
+          </div>
+
+          <div id="ad-generic-fields">
+            <div class="mb-2"><span class="text-secondary small">Alvo:</span><br><span id="ad-alvo"></span></div>
+            <div class="mb-2"><span class="text-secondary small">Detalhes:</span><br><span id="ad-detalhes" class="text-break"></span></div>
+          </div>
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Fechar</button>
         </div>
       </div>
     </div>
