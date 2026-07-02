@@ -1,6 +1,7 @@
 function buildResultHtml(data, duracao) {
   const { status, arquivos } = data;
   const encontrado = data.encontrado && arquivos && arquivos.length > 0;
+  const temErro = status?.s3?.startsWith('erro:') || status?.local?.startsWith('erro:');
 
   const steps = [
     { fonte: 's3', status: status?.s3 },
@@ -12,14 +13,28 @@ function buildResultHtml(data, duracao) {
   const card = document.getElementById('tmpl-result-card').content.cloneNode(true);
   const root = card.querySelector('.result-card');
 
-  root.classList.add(encontrado ? 'success' : 'not-found');
+  if (encontrado) root.classList.add('success');
+  else if (temErro) root.classList.add('error');
+  else root.classList.add('not-found');
 
   const icon = card.querySelector('.result-icon');
   icon.classList.add(encontrado ? 'success-icon' : 'not-found-icon');
   icon.innerHTML = encontrado ? '&#10003;' : '&#10007;';
 
-  card.querySelector('.fs-6').textContent = encontrado ? 'Arquivo encontrado' : 'Nenhum resultado';
-  card.querySelector('.text-secondary.small').textContent = `${duracao}s`;
+  card.querySelector('.fs-6').textContent = encontrado
+    ? 'Arquivo encontrado'
+    : temErro
+      ? 'Falha na busca'
+      : 'Nenhum resultado';
+
+  if (temErro) {
+    const msgs = [status?.s3, status?.local]
+      .filter(s => s?.startsWith('erro:'))
+      .map(s => s.replace('erro:', '').trim());
+    card.querySelector('.text-secondary.small').textContent = `${msgs.join('; ')} — ${formatDuration(duracao)}`;
+  } else {
+    card.querySelector('.text-secondary.small').textContent = `${formatDuration(duracao)}`;
+  }
 
   const stepsContainer = card.querySelector('.search-steps');
   steps.forEach((s) => {

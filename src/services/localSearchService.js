@@ -31,23 +31,54 @@ function getPathConfigsForYear(anoBusca) {
   return configs;
 }
 
-async function listFilesRecursively(dirPath, signal) {
-  if (signal?.aborted) return [];
-
+async function listFiles(dirPath, signal, maxDepth = Infinity) {
   const files = [];
-  const items = await fs.readdir(dirPath, { withFileTypes: true });
+  const stack = [[dirPath, 0]];
 
-  for (const item of items) {
+  while (stack.length > 0) {
     if (signal?.aborted) return [];
 
-    const fullPath = path.join(dirPath, item.name);
-    if (item.isDirectory()) {
-      files.push(...(await listFilesRecursively(fullPath, signal)));
-    } else {
-      files.push(fullPath);
+    const [currentDir, depth] = stack.pop();
+    let items;
+    try {
+      items = await fs.readdir(currentDir, { withFileTypes: true });
+    } catch (err) {
+      logger.warn(`Ignorando diret\u00f3rio sem acesso: ${currentDir} (${err.message})`);
+      continue;
+    }
+
+    for (const item of items) {
+      if (signal?.aborted) return [];
+      const fullPath = path.join(currentDir, item.name);
+      if (item.isDirectory()) {
+        if (depth < maxDepth) {
+          stack.push([fullPath, depth + 1]);
+        }
+      } else {
+        files.push(fullPath);
+      }
     }
   }
+
   return files;
+}
+
+function raceToFirstResult(promises) {
+  return new Promise((resolve) => {
+    let settled = false;
+    for (const p of promises) {
+      p.then((result) => {
+        if (settled) return;
+        if (result) {
+          settled = true;
+          resolve(result);
+        }
+      }).catch(() => {});
+    }
+    Promise.allSettled(promises).then(() => {
+      if (!settled) resolve(null);
+    });
+  });
 }
 
 export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
@@ -95,66 +126,58 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
       const abortController = new AbortController();
       const { signal } = abortController;
 
-      const resultadosPorPrefixo = await Promise.all(
-        prefixosUnicos.map(async (prefixo) => {
-          const fullPath = path.join(searchRoot, prefixo);
-          logger.info(`Testando caminho: ${prefixo}`);
+      const promessas = prefixosUnicos.map(async (prefixo) => {
+        const fullPath = path.join(searchRoot, prefixo);
+        logger.info(`Testando caminho: ${prefixo}`);
 
-          const tStat = performance.now();
-          try {
-            const stat = await fs.stat(fullPath);
-            logger.info(`   [TIMING] fs.stat OK (${(performance.now() - tStat).toFixed(0)}ms)`);
-            if (!stat.isDirectory()) return null;
-          } catch {
-            logger.info(`   [TIMING] fs.stat ENOENT (${(performance.now() - tStat).toFixed(0)}ms)`);
-            return null;
+        const tStat = performance.now();
+        try {
+          const stat = await fs.stat(fullPath);
+          logger.info(`   [TIMING] fs.stat OK (${(performance.now() - tStat).toFixed(0)}ms)`);
+          if (!stat.isDirectory()) return null;
+        } catch {
+          logger.info(`   [TIMING] fs.stat ENOENT (${(performance.now() - tStat).toFixed(0)}ms)`);
+          return null;
+        }
+
+        const tList = performance.now();
+        const allFiles = await listFiles(fullPath, signal, 2);
+        logger.info(
+          `   [TIMING] listFiles: ${allFiles.length} arquivos (${(performance.now() - tList).toFixed(0)}ms)`,
+        );
+
+        const arquivosEncontrados = [];
+        for (const filePath of allFiles) {
+          const nomeBase = path.parse(filePath).name.toLowerCase();
+          if (nomeBase.includes(termoBuscado)) {
+            const relativePath = path.relative(relativeBasePath, filePath);
+            const pathKey = relativePath.replace(/\\/g, '/');
+            arquivosEncontrados.push({ filePath, Key: pathKey });
           }
+        }
 
-          const tList = performance.now();
-          let allFiles;
-          try {
-            allFiles = await listFilesRecursively(fullPath, signal);
-          } catch (err) {
-            logger.warn(`   [TIMING] listFiles ERRO: ${err.message}`);
-            return null;
-          }
-          logger.info(
-            `   [TIMING] listFiles: ${allFiles.length} arquivos (${(performance.now() - tList).toFixed(0)}ms)`,
-          );
+        if (arquivosEncontrados.length === 0) return null;
 
-          const arquivosEncontrados = [];
-          for (const filePath of allFiles) {
-            const nomeBase = path.parse(filePath).name.toLowerCase();
-            if (nomeBase.includes(termoBuscado)) {
-              const relativePath = path.relative(relativeBasePath, filePath);
-              const pathKey = relativePath.replace(/\\/g, '/');
-              arquivosEncontrados.push({ filePath, Key: pathKey });
-            }
-          }
+        abortController.abort();
 
-          if (arquivosEncontrados.length === 0) return null;
+        return arquivosEncontrados.map((obj) => {
+          const nomeParaDownload = path.basename(obj.Key);
+          const downloadUrl = `/download-local?file=${encodeURIComponent(obj.filePath)}`;
 
-          abortController.abort();
+          logger.success(`Arquivo encontrado! Chave: ${obj.Key}`);
+          logger.info(`Arquivo físico em: ${obj.filePath}`);
+          logger.info(`URL de download: ${downloadUrl}`);
 
-          return arquivosEncontrados.map((obj) => {
-            const nomeParaDownload = path.basename(obj.Key);
-            const downloadUrl = `/download-local?file=${encodeURIComponent(obj.filePath)}`;
+          return { downloadUrl, nomeParaDownload };
+        });
+      });
 
-            logger.success(`Arquivo encontrado! Chave: ${obj.Key}`);
-            logger.info(`Arquivo físico em: ${obj.filePath}`);
-            logger.info(`URL de download: ${downloadUrl}`);
+      const resultado = await raceToFirstResult(promessas);
+      logger.info(`   [TIMING] Busca local resolvida em ${(performance.now() - t0).toFixed(0)}ms`);
 
-            return { downloadUrl, nomeParaDownload };
-          });
-        }),
-      );
-
-      logger.info(`   [TIMING] Promise.all resolvido em ${(performance.now() - t0).toFixed(0)}ms`);
-
-      const resultados = resultadosPorPrefixo.find(Boolean);
-      if (resultados) {
+      if (resultado) {
         logger.section('Busca local finalizada com sucesso');
-        return resultados;
+        return resultado;
       }
     }
   }
