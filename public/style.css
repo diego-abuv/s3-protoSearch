@@ -671,4 +671,46 @@ input[type="date"].is-invalid {
   background-image: none;
 }
 
+/* ── Audit info button ─── */
+.audit-info-btn {
+  background: var(--glass-input-bg);
+  border: 1px solid var(--glass-border);
+  color: var(--gradient-start);
+  border-radius: 50%;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease;
+}
+.audit-info-btn:hover {
+  box-shadow: 0 0 10px var(--glow-1);
+  border-color: var(--gradient-start);
+}
+
+#ad-servidores .step-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* ── Badges outline ─── */
+.badge-outline-info     { color: #0dcaf0; border: 1px solid #0dcaf0; background: transparent; }
+.badge-outline-success  { color: #198754; border: 1px solid #198754; background: transparent; }
+.badge-outline-warning  { color: #ffc107; border: 1px solid #ffc107; background: transparent; }
+.badge-outline-danger   { color: #dc3545; border: 1px solid #dc3545; background: transparent; }
+.badge-outline-primary  { color: #0d6efd; border: 1px solid #0d6efd; background: transparent; }
+.badge-outline-secondary{ color: #6c757d; border: 1px solid #6c757d; background: transparent; }
+
+/* ── Info "i" serifado ─── */
+.audit-info-btn .info-i {
+  font-family: Georgia, 'Times New Roman', serif;
+  font-style: italic;
+  font-weight: 700;
+}
+
 
