@@ -317,7 +317,7 @@ document.getElementById('auditTableBody').addEventListener('click', (e) => {
 
     document.getElementById('ad-termo').textContent = termo || '-';
     document.getElementById('ad-protocolo').textContent = protocolo || '-';
-    document.getElementById('ad-duracao').textContent = tempo ? `${tempo}s` : '-';
+    document.getElementById('ad-duracao').textContent = tempo ? formatDuration(tempo) : '-';
     document.getElementById('ad-encontrados').textContent = encontrados !== null ? encontrados : (erro ? `Erro: ${erro}` : '-');
 
     const sv = document.getElementById('ad-servidores');
