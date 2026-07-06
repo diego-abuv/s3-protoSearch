@@ -27,6 +27,20 @@ form.addEventListener('submit', async (event) => {
   const username = document.getElementById('username').value;
   const password = document.getElementById('password').value;
 
+  const usernameRegex = /^[a-zA-Z0-9._-]{3,50}$/;
+  const passwordRegex = /^[\x20-\x7E]{6,128}$/;
+
+  if (!usernameRegex.test(username)) {
+    loginError.textContent = 'Usuário inválido (3-50 caracteres, apenas letras, números, . _ -)';
+    loginError.classList.remove('d-none');
+    return;
+  }
+  if (!passwordRegex.test(password)) {
+    loginError.textContent = 'Senha inválida';
+    loginError.classList.remove('d-none');
+    return;
+  }
+
   btnEntrar.disabled = true;
   btnText.textContent = 'Entrando...';
   btnSpinner.classList.remove('d-none');
