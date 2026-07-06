@@ -14,8 +14,8 @@ export function sanitizeInput(input) {
 }
 
 export function validatePassword(password) {
-  if (!password || password.length < 6) {
-    return 'Senha deve ter no mínimo 6 caracteres.';
+  if (!password || password.length < 12) {
+    return 'Senha deve ter no mínimo 12 caracteres.';
   }
   if (!/[A-Z]/.test(password)) {
     return 'Senha deve conter pelo menos uma letra maiúscula.';

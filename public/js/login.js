@@ -28,7 +28,7 @@ form.addEventListener('submit', async (event) => {
   const password = document.getElementById('password').value;
 
   const usernameRegex = /^[a-zA-Z0-9._-]{3,50}$/;
-  const passwordRegex = /^[\x20-\x7E]{6,128}$/;
+  const passwordRegex = /^[\x20-\x7E]{12,128}$/;
 
   if (!usernameRegex.test(username)) {
     loginError.textContent = 'Usuário inválido (3-50 caracteres, apenas letras, números, . _ -)';

@@ -94,6 +94,14 @@ document.getElementById('btnSalvarNovo').addEventListener('click', async () => {
   const password = document.getElementById('newPassword').value;
   const role = document.getElementById('newRole').value;
 
+  const usernameRegex = /^[a-zA-Z0-9._-]{3,50}$/;
+
+  if (!usernameRegex.test(username)) {
+    errEl.textContent = 'Usuário inválido (3-50 caracteres, apenas letras, números, . _ -)';
+    errEl.classList.remove('d-none');
+    return;
+  }
+
   if (!username || !password) {
     errEl.textContent = 'Username e senha sao obrigatorios';
     errEl.classList.remove('d-none');
@@ -137,6 +145,14 @@ document.getElementById('btnSalvarEdicao').addEventListener('click', async () =>
 
   if (password) {
     payload.password = password;
+  }
+
+  const usernameRegex = /^[a-zA-Z0-9._-]{3,50}$/;
+
+  if (!usernameRegex.test(username)) {
+    errEl.textContent = 'Usuário inválido (3-50 caracteres, apenas letras, números, . _ -)';
+    errEl.classList.remove('d-none');
+    return;
   }
 
   if (!username) {
