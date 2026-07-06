@@ -5,7 +5,7 @@ import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import { logAudit, get, run, save } from '../db/sqlite.js';
 import { logger } from '../utils/logger.js';
-import { validatePassword } from '../utils/validation.js';
+import { validatePassword, validateUsername, sanitizeInput } from '../utils/validation.js';
 import { loginLimiter, authMiddleware } from '../middleware/auth.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -43,9 +43,15 @@ export function createAuthRoutes() {
   });
 
   router.post('/register', registerLimiter, (req, res) => {
-    const { username, password, adminKey } = req.body;
+    let { username, password, adminKey } = req.body;
+    username = sanitizeInput(username);
+    password = sanitizeInput(password);
     if (!username || !password) {
       return res.status(400).json({ error: 'username e password obrigatórios' });
+    }
+    const userError = validateUsername(username);
+    if (userError) {
+      return res.status(400).json({ error: userError });
     }
     const passwordError = validatePassword(password);
     if (passwordError) {
@@ -73,9 +79,15 @@ export function createAuthRoutes() {
   });
 
   router.post('/login', loginLimiter, (req, res) => {
-    const { username, password } = req.body;
+    let { username, password } = req.body;
+    username = sanitizeInput(username);
+    password = sanitizeInput(password);
     if (!username || !password) {
       return res.status(400).json({ error: 'username e password obrigatórios' });
+    }
+    const userError = validateUsername(username);
+    if (userError) {
+      return res.status(400).json({ error: 'credenciais inválidas' });
     }
 
     const user = get('SELECT * FROM users WHERE username = ?', [username]);

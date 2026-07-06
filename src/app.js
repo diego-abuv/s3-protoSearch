@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
 import { initDatabase } from './db/sqlite.js';
+import { securityHeaders } from './utils/securityHeaders.js';
 import { createAuthRoutes } from './routes/auth.js';
 import { createSearchRoutes } from './routes/search.js';
 import { createDownloadRoutes } from './routes/download.js';
@@ -17,16 +18,7 @@ export async function createApp(searchableService) {
   app.use(express.json());
   app.use(cookieParser());
 
-  app.use((req, res, next) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
-    res.setHeader(
-      'Content-Security-Policy',
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'",
-    );
-    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-    next();
-  });
+  app.use(securityHeaders);
 
   await initDatabase();
 
