@@ -2,7 +2,7 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.js';
 import { all, get, run, save, logAudit } from '../db/sqlite.js';
-import { validatePassword } from '../utils/validation.js';
+import { validatePassword, validateUsername, sanitizeInput } from '../utils/validation.js';
 
 export function createAdminRoutes() {
   const router = express.Router();
@@ -15,10 +15,14 @@ export function createAdminRoutes() {
 
   router.post('/admin/users', authMiddleware, adminMiddleware, (req, res) => {
     // Lógica para criar um novo usuário
-    const { username, password, role } = req.body;
+    let { username, password, role } = req.body;
+    username = sanitizeInput(username);
+    password = sanitizeInput(password);
     if (!username || !password) {
       return res.status(400).json({ error: 'username e password são obrigatórios' });
     }
+    const userError = validateUsername(username);
+    if (userError) return res.status(400).json({ error: userError });
     const passwordError = validatePassword(password);
     if (passwordError) {
       return res.status(400).json({ error: passwordError });
@@ -56,8 +60,11 @@ export function createAdminRoutes() {
     const params = [];
 
     if (username) {
+      const sanitized = sanitizeInput(username);
+      const userError = validateUsername(sanitized);
+      if (userError) return res.status(400).json({ error: userError });
       updates.push('username = ?');
-      params.push(username);
+      params.push(sanitized);
     }
     if (role) {
       updates.push('role = ?');
