@@ -1,0 +1,8 @@
+s3-protosearch.local, localhost {
+    tls internal # remover em produção
+    reverse_proxy s3-protosearch:80
+}
+
+:80 {
+    redir https://{host}{uri} 301
+}
