@@ -352,6 +352,15 @@ body {
   color: var(--status-err);
 }
 
+.step-dot.index {
+  background: #3B82F6;
+  box-shadow: 0 0 6px rgba(59, 130, 246, 0.5);
+}
+
+.step-status.index {
+  color: #3B82F6;
+}
+
 /* ==============================
    Utilitários — Failure, Download, Progress, Footer
    ============================== */

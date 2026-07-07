@@ -4,7 +4,7 @@ services:
     container_name: s3-caddy
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "3000:80"
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
@@ -15,7 +15,7 @@ services:
 
   s3-protosearch:
     expose:
-      - "3000"
+      - "80"
 
 volumes:
   caddy_data:

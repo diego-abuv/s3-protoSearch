@@ -2,6 +2,7 @@ import 'dotenv/config';
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../utils/logger.js';
+import { runIndex, saveIndex } from '../db/indexDb.js';
 
 function getPathConfigsForYear(anoBusca) {
   const configs = [];
@@ -31,37 +32,65 @@ function getPathConfigsForYear(anoBusca) {
   return configs;
 }
 
-async function listFiles(dirPath, signal, maxDepth = Infinity) {
-  const files = [];
+async function findFiles(dirPath, targetName, signal, maxDepth, searchRoot) {
   const stack = [[dirPath, 0]];
+  const results = [];
+  let foundDepth = Infinity;
+  let fileCount = 0;
 
-  while (stack.length > 0) {
-    if (signal?.aborted) return [];
+  runIndex('BEGIN TRANSACTION');
 
-    const [currentDir, depth] = stack.pop();
-    let items;
-    try {
-      items = await fs.readdir(currentDir, { withFileTypes: true });
-    } catch (err) {
-      logger.warn(`Ignorando diret\u00f3rio sem acesso: ${currentDir} (${err.message})`);
-      continue;
-    }
+  try {
+    while (stack.length > 0) {
+      if (signal?.aborted) break;
 
-    for (const item of items) {
-      if (signal?.aborted) return [];
-      const fullPath = path.join(currentDir, item.name);
-      if (item.isDirectory()) {
-        if (depth < maxDepth) {
-          stack.push([fullPath, depth + 1]);
+      const [currentDir, depth] = stack.pop();
+      let items;
+      try {
+        items = await fs.readdir(currentDir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+
+      for (const item of items) {
+        if (signal?.aborted) break;
+        const fullPath = path.join(currentDir, item.name);
+
+        if (item.isDirectory()) {
+          if (depth < Math.min(maxDepth, foundDepth - 1)) {
+            stack.push([fullPath, depth + 1]);
+          }
+        } else {
+          const fileBase = path.parse(item.name).name;
+          const nomeBase = fileBase.toLowerCase();
+
+          const protocolNumber = (nomeBase.match(/^\d+/) || [nomeBase])[0];
+          runIndex(
+            `INSERT OR IGNORE INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)`,
+            [protocolNumber, fullPath, fileBase, searchRoot],
+          );
+          fileCount++;
+
+          if (nomeBase.includes(targetName)) {
+            results.push(fullPath);
+            foundDepth = depth + 1;
+          }
+
+          if (fileCount % 5000 === 0) {
+            runIndex('COMMIT');
+            runIndex('BEGIN TRANSACTION');
+          }
         }
-      } else {
-        files.push(fullPath);
       }
     }
+  } finally {
+    runIndex('COMMIT');
   }
 
-  return files;
+  return results;
 }
+
+const LOCAL_SEARCH_EXTENSIONS = ['.mp3', '.wav', '.mp4', '.pdf', '.ogg', '.wma', '.avi', '.txt'];
 
 function raceToFirstResult(promises) {
   return new Promise((resolve) => {
@@ -81,10 +110,10 @@ function raceToFirstResult(promises) {
   });
 }
 
-export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
-  logger.section('Início da requisição de busca local');
-  logger.info(`- Data do Protocolo (pasta): ${pasta}`);
-  logger.info(`- Nome do Arquivo (nomeProtocolo): ${nomeProtocolo}`);
+export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger) {
+  log.section('Início da requisição de busca local');
+  log.info(`- Data do Protocolo (pasta): ${pasta}`);
+  log.info(`- Nome do Arquivo (nomeProtocolo): ${nomeProtocolo}`);
 
   const [ano, mes, dia] = pasta.split('/');
   const anoBusca = parseInt(ano, 10);
@@ -92,7 +121,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
   const pathConfigs = getPathConfigsForYear(anoBusca);
 
   if (!pathConfigs || pathConfigs.length === 0) {
-    logger.error(`Nenhuma configuração de caminho associada ao ano ${anoBusca} encontrada no .env.`);
+    log.error(`Nenhuma configuração de caminho associada ao ano ${anoBusca} encontrada no .env.`);
     return null;
   }
 
@@ -103,7 +132,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
       try {
         await fs.access(searchRoot);
       } catch {
-        logger.warn(`O caminho de busca "${searchRoot}" não está acessível. Pulando...`);
+        log.warn(`O caminho de busca "${searchRoot}" não está acessível. Pulando...`);
         continue;
       }
 
@@ -120,7 +149,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
       const relativeBasePath = pathConfig.basePath || searchRoot;
       const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase();
 
-      logger.info(`Buscando em: ${searchRoot}`);
+      log.info(`Buscando em: ${searchRoot}`);
       const t0 = performance.now();
 
       const abortController = new AbortController();
@@ -128,67 +157,80 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo) {
 
       const promessas = prefixosUnicos.map(async (prefixo) => {
         const fullPath = path.join(searchRoot, prefixo);
-        logger.info(`Testando caminho: ${prefixo}`);
+        log.info(`Testando caminho: ${prefixo}`);
 
         const tStat = performance.now();
         try {
           const stat = await fs.stat(fullPath);
-          logger.info(`   [TIMING] fs.stat OK (${(performance.now() - tStat).toFixed(0)}ms)`);
+          log.info(`   [TIMING] fs.stat OK (${(performance.now() - tStat).toFixed(0)}ms)`);
           if (!stat.isDirectory()) return null;
         } catch {
-          logger.info(`   [TIMING] fs.stat ENOENT (${(performance.now() - tStat).toFixed(0)}ms)`);
+          log.info(`   [TIMING] fs.stat ENOENT (${(performance.now() - tStat).toFixed(0)}ms)`);
           return null;
         }
 
-        const tList = performance.now();
-        const allFiles = await listFiles(fullPath, signal, 2);
-        logger.info(
-          `   [TIMING] listFiles: ${allFiles.length} arquivos (${(performance.now() - tList).toFixed(0)}ms)`,
-        );
+        // Tentativa direta com extensões comuns
+        for (const ext of LOCAL_SEARCH_EXTENSIONS) {
+          if (signal?.aborted) return null;
+          const directPath = path.join(fullPath, nomeProtocolo + ext);
+          try {
+            await fs.access(directPath);
+            log.success(`   [DIRECT] Arquivo encontrado via acesso direto: ${directPath}`);
 
-        const arquivosEncontrados = [];
-        for (const filePath of allFiles) {
-          const nomeBase = path.parse(filePath).name.toLowerCase();
-          if (nomeBase.includes(termoBuscado)) {
-            const relativePath = path.relative(relativeBasePath, filePath);
+            abortController.abort();
+            const relativePath = path.relative(relativeBasePath, directPath);
             const pathKey = relativePath.replace(/\\/g, '/');
-            arquivosEncontrados.push({ filePath, Key: pathKey });
+            const nomeParaDownload = path.basename(pathKey);
+            const downloadUrl = `/download-local?file=${encodeURIComponent(directPath)}`;
+
+            log.success(`Arquivo encontrado! Chave: ${pathKey}`);
+            return [{ downloadUrl, nomeParaDownload }];
+          } catch {
+            /* arquivo não existe com essa extensão */
           }
         }
 
-        if (arquivosEncontrados.length === 0) return null;
+        // Fallback: escaneia com indexação on-the-fly
+        const tFind = performance.now();
+        const foundFiles = await findFiles(fullPath, termoBuscado, signal, 2, searchRoot);
+        log.info(
+          `   [TIMING] findFiles: ${(performance.now() - tFind).toFixed(0)}ms (indexados ${foundFiles.length} arquivos)`,
+        );
 
-        abortController.abort();
+        if (foundFiles.length === 0) return null;
 
-        return arquivosEncontrados.map((obj) => {
-          const nomeParaDownload = path.basename(obj.Key);
-          const downloadUrl = `/download-local?file=${encodeURIComponent(obj.filePath)}`;
-
-          logger.success(`Arquivo encontrado! Chave: ${obj.Key}`);
-          logger.info(`Arquivo físico em: ${obj.filePath}`);
-          logger.info(`URL de download: ${downloadUrl}`);
-
+        return foundFiles.map((fp) => {
+          const relativePath = path.relative(relativeBasePath, fp);
+          const pathKey = relativePath.replace(/\\/g, '/');
+          const nomeParaDownload = path.basename(pathKey);
+          const downloadUrl = `/download-local?file=${encodeURIComponent(fp)}`;
+          log.success(`Arquivo encontrado! Chave: ${pathKey}`);
+          log.info(`Arquivo físico em: ${fp}`);
+          log.info(`URL de download: ${downloadUrl}`);
           return { downloadUrl, nomeParaDownload };
         });
       });
 
       const resultado = await raceToFirstResult(promessas);
-      logger.info(`   [TIMING] Busca local resolvida em ${(performance.now() - t0).toFixed(0)}ms`);
+      log.info(`   [TIMING] Busca local resolvida em ${(performance.now() - t0).toFixed(0)}ms`);
+
+      // Persiste índice assíncrono (arquivos indexados no fallback)
+      setImmediate(() => saveIndex());
 
       if (resultado) {
-        logger.section('Busca local finalizada com sucesso');
+        log.section('Busca local finalizada com sucesso');
         return resultado;
       }
     }
   }
 
   if (!algumCaminhoAcessivel) {
-    logger.error('Nenhum caminho de busca local está acessível.');
-    logger.section('Busca local finalizada com erro');
+    log.error('Nenhum caminho de busca local está acessível.');
+    log.section('Busca local finalizada com erro');
     return { erro: 'Nenhum caminho de rede acessivel' };
   }
 
-  logger.info('Nenhum arquivo correspondente encontrado localmente.');
-  logger.section('Busca local finalizada');
+  log.info('Nenhum arquivo correspondente encontrado localmente.');
+  log.section('Busca local finalizada');
   return null;
 }

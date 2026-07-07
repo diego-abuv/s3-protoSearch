@@ -2,7 +2,7 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { authMiddleware } from '../middleware/auth.js';
 import { sanitizeError } from '../utils/errorCodes.js';
-import { logger } from '../utils/logger.js';
+import { logger, createContextLogger } from '../utils/logger.js';
 import { logAudit } from '../db/sqlite.js';
 
 export function createSearchRoutes(searchableService) {
@@ -34,7 +34,8 @@ export function createSearchRoutes(searchableService) {
       const pastaFormatada = pasta.replace(/-/g, '/');
 
       const start = performance.now();
-      const resultado = await searchableService.findFileAndGetSignedUrl(pastaFormatada, nomeProtocolo);
+      const ctxLogger = createContextLogger({ username: req.user.username });
+      const resultado = await searchableService.findFileAndGetSignedUrl(pastaFormatada, nomeProtocolo, ctxLogger);
       const elapsed = ((performance.now() - start) / 1000).toFixed(2);
 
       const found = resultado.arquivos && resultado.arquivos.length > 0;

@@ -35,7 +35,7 @@ Aplicação web containerizada para busca unificada de arquivos de áudio/docume
 - **Autenticação JWT**: Login com access token em memória + refresh token em cookie httpOnly (rotação a cada uso).
 - **Painel administrativo**: CRUD de usuários, log de auditoria, estatísticas do sistema.
 - **Rate limiting**: Login (5/min), registro (3/min), busca (30/min) — proteção contra brute force.
-- **Password policy**: Senha forte (6+ caracteres, maiúscula, minúscula, número, símbolo).
+- **Password policy**: Senha forte (12+ caracteres, maiúscula, minúscula, número, símbolo).
 - **Audit logging**: Todas as ações sensíveis registradas no SQLite com rotação de 90 dias.
 - **HTTPS + HSTS**: Caddy sidecar com TLS, redirect automático e Strict-Transport-Security.
 - **CSP**: Content-Security-Policy bloqueia scripts inline e XSS.
@@ -76,8 +76,9 @@ graph TD
             B["/buscar-arquivo<br/>authMiddleware + rate 30/min"]
             B --> US["UnifiedSearchService"]
             US -->|tenta 1º| S3["S3 ListObjectsV2"]
-            S3 -->|falha / não encontrou| FALLBACK
-            FALLBACK --> LOCAL["Varre diretório local"]
+            S3 -->|falha / não encontrou| IDX["Índice Local SQLite"]
+            IDX -->|encontrou| RJSON["Resposta JSON"]
+            IDX -->|não encontrou| LOCAL["Varre dir. local + index on-the-fly"]
             S3 -->|URL assinada 1h| RJSON["Resposta JSON"]
             LOCAL -->|/download-local| RJSON
         end
@@ -105,6 +106,7 @@ graph TD
 
     DB --> AUDIT_LOG[audit_log<br/>90 dias rotate]
     DB --> USERS[users]
+    DB --> INDEX_DB[file_index<br/>2.5M+ registros]
     DB --> TOKENS[refresh_tokens<br/>expired cleanup]
 
     style C fill:#009688,stroke:#fff,stroke-width:2px
@@ -209,7 +211,7 @@ O sistema testa 4 variações de data (`YYYY/M/D`, `YYYY/M/DD`, `YYYY/MM/DD`, `Y
 | **JWT** | Access token em memória (nunca localStorage/sessionStorage) |
 | **Refresh token** | Cookie httpOnly + SameSite=Strict + Secure + rotação (invalida após uso) |
 | **Rate limit** | Login (5/min), Register (3/min), Busca (30/min) |
-| **Password policy** | Mínimo 6 caracteres, maiúscula, minúscula, número e símbolo |
+| **Password policy** | Mínimo 12 caracteres, maiúscula, minúscula, número e símbolo |
 | **RBAC** | Roles `user` e `admin` — admin routes protegidas por `adminMiddleware` |
 | **Path traversal** | Validação de resolved path contra base paths configurados |
 | **Open redirect** | Parâmetro `redirect` validado como path relativo (`startsWith('/')`) |
@@ -233,6 +235,7 @@ s3-protoSearch/
 │   ├── server.js                 # Entry point (validação de secrets)
 │   ├── app.js                    # Express + CSP + HSTS + rotas
 │   ├── db/
+│   │   ├── indexDb.js            # SQLite — índice local de arquivos (file_index)
 │   │   └── sqlite.js             # SQLite (sql.js) — usuários, tokens, audit
 │   ├── middleware/
 │   │   └── auth.js               # JWT, loginLimiter, authMiddleware, adminMiddleware
@@ -242,14 +245,18 @@ s3-protoSearch/
 │   │   ├── download.js           # GET /download-local
 │   │   └── admin.js              # CRUD usuários + audit log + stats
 │   ├── services/
-│   │   ├── unifiedSearchService.js   # S3 → Local
+│   │   ├── unifiedSearchService.js   # S3 → Índice → Local
 │   │   ├── s3SearchService.js        # Busca S3 + signed URLs
-│   │   └── localSearchService.js     # Busca em diretório local
+│   │   └── localSearchService.js     # Busca em diretório local + index on-the-fly
 │   └── utils/
 │       ├── errorCodes.js             # Tradução de erros
 │       ├── retry.js                  # Exponential backoff
+│       ├── securityHeaders.js        # CSP, HSTS, X-Frame-Options
 │       ├── logger.js                 # Logger estruturado
 │       └── validation.js             # Validação de senha forte
+├── scripts/
+│   ├── indexFiles.js              # Indexação em lote do diretório local
+│   └── migrateIndex.js            # Migração app.db → index.db
 ├── public/
 │   ├── login.html                # Login com validação inline
 │   ├── admin.html                # Painel admin (CRUD + audit)
@@ -514,7 +521,7 @@ Após criado, ajuste o `Caddyfile` com o hostname real:
 ```
 s3-protosearch.intranet.empresa.com {
     tls internal          # manter enquanto não houver certificado válido
-    reverse_proxy s3-localsearch:80
+    reverse_proxy s3-protosearch:3000
 }
 ```
 

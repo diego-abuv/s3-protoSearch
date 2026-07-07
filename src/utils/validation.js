@@ -10,7 +10,14 @@ export function validateUsername(username) {
 
 export function sanitizeInput(input) {
   if (typeof input !== 'string') return '';
-  return input.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '').slice(0, 1024);
+  return input
+    .split('')
+    .filter((c) => {
+      const code = c.charCodeAt(0);
+      return code >= 32 && code !== 127;
+    })
+    .join('')
+    .slice(0, 1024);
 }
 
 export function validatePassword(password) {

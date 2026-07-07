@@ -17,3 +17,15 @@ export const logger = {
   section: (...args) => console.log(`\n${cor.bold}${cor.ciano}---`, ...args, `---${cor.reset}`),
   destaque: (...args) => console.log(`${cor.bold}${cor.azul}`, ...args, `${cor.reset}`),
 };
+
+export function createContextLogger(ctx) {
+  const p = () => `${cor.cinza}[${new Date().toISOString()}] [${ctx.username}]${cor.reset}`;
+  return {
+    info: (...args) => console.log(`${cor.azul}[INFO]${cor.reset} ${p()}`, ...args),
+    success: (...args) => console.log(`${cor.verde}[OK]${cor.reset} ${p()}`, ...args),
+    warn: (...args) => console.log(`${cor.amarelo}[AVISO]${cor.reset} ${p()}`, ...args),
+    error: (...args) => console.log(`${cor.vermelho}[ERRO]${cor.reset} ${p()}`, ...args),
+    section: (...args) => console.log(`\n${cor.bold}${cor.ciano}---`, ...args, `--- ${p()}${cor.reset}`),
+    destaque: (...args) => console.log(`${cor.bold}${cor.azul}`, ...args, ` ${p()}${cor.reset}`),
+  };
+}
