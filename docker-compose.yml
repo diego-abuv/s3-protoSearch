@@ -1,32 +1,12 @@
 services:
-  caddy:
-    image: caddy:2-alpine
-    container_name: s3-caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - s3-localsearch
-
-  s3-localsearch:
+  s3-protosearch:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: s3-protosearch
     restart: always
-    expose:
-      - "80"
     env_file:
       - .env
     volumes:
       - /sharepoint:/sharepoint:ro
       - /db:/db
-
-volumes:
-  caddy_data:
-  caddy_config:

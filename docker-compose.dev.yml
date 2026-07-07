@@ -1,0 +1,4 @@
+services:
+  s3-protosearch:
+    ports:
+      - "3000:3000"

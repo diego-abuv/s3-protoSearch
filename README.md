@@ -129,22 +129,43 @@ graph TD
 
 ---
 
+## Modos de Operação
+
+| Modo | Comando | Acesso |
+|------|---------|--------|
+| **HTTP** (dev/local) | `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d` | `http://host:3000` |
+| **HTTPS** (produção) | `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` | `https://dominio` |
+
+```bash
+# HTTP — app exposta na porta 3000
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+# HTTPS — Caddy na 80/443, app apenas na rede interna
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+```
+
+> Em modo HTTPS, apenas as portas 80 e 443 do Caddy ficam expostas.
+> A porta 3000 da aplicação fica acessível apenas na rede interna do Docker (exposed, não publicada).
+> O Express detecta automaticamente se a requisição chegou por HTTP ou HTTPS via `req.protocol` (Caddy envia `X-Forwarded-Proto`). Cookie `secure` e HSTS são ativados somente quando HTTPS for detectado.
+
+---
+
 ## ⚙️ Configuração (.env)
 
 ```
 # Servidor
-PORT=80
 NODE_ENV=busca-ligacoes
+
+# Logs
+PUBLIC_HOST=localhost
+PUBLIC_PROTOCOL=http
+PORT=3000
 
 # AWS S3
 AWS_ACCESS_KEY_ID=SUA_ACCESS_KEY
 AWS_SECRET_ACCESS_KEY=SEU_SECRET_KEY
 AWS_BUCKET_NAME=nome-do-bucket
 AWS_REGION=sa-east-1
-
-# URL pública (log de inicialização)
-PUBLIC_PROTOCOL=http
-PUBLIC_HOST=localhost
 
 # Busca Local 
 PATH_X5=/sharepoint/pastaPrincipal
@@ -163,7 +184,7 @@ ADMIN_KEY=chave-para-criar-usuarios
 
 | Variável | Obrigatório | Descrição |
 |----------|------------|-----------|
-| `PORT` | Sim | Porta do servidor (exposta internamente, Caddy na 80/443) |
+| `PORT` | Não | Porta exibida no log (padrão 3000, apenas informativa) |
 | `NODE_ENV` | Não | `busca-ligacoes` ativa download local |
 | `PUBLIC_PROTOCOL` | Não | Protocolo público (`http`/`https`), exibido no log |
 | `PUBLIC_HOST` | Não | Host público (IP ou DNS), exibido no log |
@@ -183,7 +204,7 @@ O sistema testa 4 variações de data (`YYYY/M/D`, `YYYY/M/DD`, `YYYY/MM/DD`, `Y
 | Medida | Implementação |
 |--------|--------------|
 | **HTTPS** | Caddy sidecar com `tls internal` + redirect automático HTTP→HTTPS |
-| **HSTS** | `Strict-Transport-Security: max-age=31536000; includeSubDomains` (sempre ativo) |
+| **HSTS** | `Strict-Transport-Security: max-age=31536000; includeSubDomains` (enviado apenas quando HTTPS ativo) |
 | **CSP** | `script-src 'self'` — bloqueia inline scripts e XSS |
 | **JWT** | Access token em memória (nunca localStorage/sessionStorage) |
 | **Refresh token** | Cookie httpOnly + SameSite=Strict + Secure + rotação (invalida após uso) |

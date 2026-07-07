@@ -37,14 +37,14 @@ async function startServer() {
   const app = await createApp(searchableService);
   const port = process.env.PORT || 80;
   const host = '0.0.0.0';
-
-  const protocol = process.env.PUBLIC_PROTOCOL || 'http';
   const publicHost = process.env.PUBLIC_HOST || getLocalIp();
+  const publicProtocol = process.env.PUBLIC_PROTOCOL || 'http';
   const portSuffix = port == 80 || port == 443 ? '' : `:${port}`;
-  const publicUrl = `${protocol}://${publicHost}${portSuffix}`;
 
   app.listen(port, host, () => {
-    logger.info(`Servidor rodando em http://${host}:${port}, acessível em ${publicUrl}`);
+    logger.info(
+      `Servidor rodando em ${publicProtocol}://${host}:${port}, acessível em ${publicProtocol}://${publicHost}${portSuffix}`,
+    );
   });
 }
 

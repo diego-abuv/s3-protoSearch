@@ -5,6 +5,8 @@ export function securityHeaders(req, res, next) {
     'Content-Security-Policy',
     "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'",
   );
-  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  if (req.protocol === 'https') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
   next();
 }
