@@ -26,6 +26,13 @@ export async function initIndexDb() {
   )`);
   db.run('CREATE INDEX IF NOT EXISTS idx_protocol_number ON file_index(protocol_number)');
 
+  db.run(`CREATE TABLE IF NOT EXISTS scanned_dirs (
+    search_root TEXT NOT NULL,
+    dir_path TEXT NOT NULL,
+    indexed_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (search_root, dir_path)
+  )`);
+
   ready = true;
   return db;
 }
@@ -47,6 +54,27 @@ export function queryIndex(sql, params = []) {
 
 export function runIndex(sql, params = []) {
   getIndexDb().run(sql, params);
+}
+
+export function isDirScanned(searchRoot, dirPath, maxAgeHours = 24) {
+  if (!ready) return false;
+  const stmt = getIndexDb().prepare(
+    `SELECT 1 FROM scanned_dirs 
+     WHERE search_root = ? AND dir_path = ? 
+     AND indexed_at > datetime('now', ?)`,
+  );
+  stmt.bind([searchRoot, dirPath, `-${maxAgeHours} hours`]);
+  const result = stmt.step();
+  stmt.free();
+  return result;
+}
+
+export function markDirScanned(searchRoot, dirPath) {
+  runIndex(
+    `INSERT OR REPLACE INTO scanned_dirs (search_root, dir_path, indexed_at) 
+     VALUES (?, ?, datetime('now'))`,
+    [searchRoot, dirPath],
+  );
 }
 
 export function saveIndex() {

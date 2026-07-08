@@ -2,7 +2,7 @@ import 'dotenv/config';
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../utils/logger.js';
-import { runIndex, saveIndex } from '../db/indexDb.js';
+import { runIndex, saveIndex, isDirScanned, markDirScanned } from '../db/indexDb.js';
 
 function getPathConfigsForYear(anoBusca) {
   const configs = [];
@@ -191,8 +191,14 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
         }
 
         // Fallback: escaneia com indexação on-the-fly
+        if (isDirScanned(searchRoot, prefixo)) {
+          log.info(`   [SKIP] ${prefixo} já indexado há menos de 24h. Pulando scan.`);
+          return null;
+        }
+
         const tFind = performance.now();
         const foundFiles = await findFiles(fullPath, termoBuscado, signal, 2, searchRoot);
+        markDirScanned(searchRoot, prefixo);
         log.info(
           `   [TIMING] findFiles: ${(performance.now() - tFind).toFixed(0)}ms (indexados ${foundFiles.length} arquivos)`,
         );

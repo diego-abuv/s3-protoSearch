@@ -1,7 +1,7 @@
 function buildResultHtml(data, duracao) {
   const { status, arquivos } = data;
   const encontrado = data.encontrado && arquivos && arquivos.length > 0;
-  const temErro = status?.s3?.startsWith('erro:') || status?.local?.startsWith('erro:');
+  const temErro = status?.s3?.startsWith('erro:') && status?.local?.startsWith('erro:');
 
   const steps = [
     { fonte: 's3', status: status?.s3 },
