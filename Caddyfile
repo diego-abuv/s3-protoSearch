@@ -1,4 +1,4 @@
-s3-protosearch.local, localhost {
+seu-dominio-aqui.com.br, localhost {
     tls internal # remover em produção
     reverse_proxy s3-protosearch:80
 }

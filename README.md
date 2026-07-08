@@ -149,6 +149,8 @@ docker compose -f docker-compose.yml -f docker-compose.http.yml up -d --build
 docker compose -f docker-compose.yml -f docker-compose.https.yml up -d --build
 ```
 
+> ⚠️ **Antes do primeiro deploy HTTPS**: edite o `Caddyfile` e substitua `seu-dominio-aqui.com.br` pelo domínio real. O Caddy só aceita conexões TLS para domínios explicitamente listados.
+
 > Em modo HTTPS, apenas as portas 80 e 443 do Caddy ficam expostas.
 > A porta 3000 da aplicação fica acessível apenas na rede interna do Docker (exposed, não publicada).
 > O Express detecta automaticamente se a requisição chegou por HTTP ou HTTPS via `req.protocol` (Caddy envia `X-Forwarded-Proto`). Cookie `secure` e HSTS são ativados somente quando HTTPS for detectado.
@@ -523,9 +525,9 @@ Crie um registro **A** apontando o hostname para o IP do servidor:
 Após criado, ajuste o `Caddyfile` com o hostname real:
 
 ```
-s3-protosearch.intranet.empresa.com {
-    tls internal          # manter enquanto não houver certificado válido
-    reverse_proxy s3-protosearch:3000
+seu-dominio-aqui.com.br {
+    tls internal
+    reverse_proxy s3-protosearch:80
 }
 ```
 
