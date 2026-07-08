@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { S3Client, ListObjectsV2Command, GetObjectCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import https from 'https';
@@ -80,26 +80,6 @@ async function searchPrefix(prefixo, termoBuscado, signal, log) {
   return null;
 }
 
-const S3_HEAD_EXTENSIONS = ['.mp3', '.wav', '', '.mp4', '.ogg', '.wma', '.pdf'];
-
-async function tryHeadObject(prefixo, nomeProtocolo, signal, log) {
-  for (const ext of S3_HEAD_EXTENSIONS) {
-    if (signal?.aborted) return null;
-    const key = `${prefixo}${nomeProtocolo}${ext}`;
-    if (key.endsWith('/')) continue;
-    try {
-      const cmd = new HeadObjectCommand({ Bucket: bucketName, Key: key });
-      await s3Client.send(cmd);
-      log.success(`HeadObject encontrou: ${key}`);
-      return key;
-    } catch (err) {
-      if (err.name === 'NotFound') continue;
-      throw err;
-    }
-  }
-  return null;
-}
-
 export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger) {
   const [ano, mes, dia] = pasta.split('/');
 
@@ -115,33 +95,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
   const abortController = new AbortController();
   const { signal } = abortController;
 
-  // Fast path: HeadObject em paralelo para todos os prefixos
-  log.info('Tentando HeadObject em paralelo...');
-  const headResults = await Promise.all(prefixes.map((p) => tryHeadObject(p, termoBuscado, signal, log)));
-  const headKey = headResults.find((k) => k !== null);
-
-  if (headKey) {
-    abortController.abort();
-    log.success(`Arquivo encontrado via HeadObject: ${headKey}`);
-
-    const nomeParaDownload = path.basename(headKey);
-    const getCommand = new GetObjectCommand({
-      Bucket: bucketName,
-      Key: headKey,
-      ResponseContentDisposition: `attachment; filename="${nomeParaDownload}"`,
-    });
-    const downloadUrl = await withRetry(() => getSignedUrl(s3Client, getCommand, { expiresIn: 3600 }), {
-      label: 'getSignedUrl',
-      maxRetries: 1,
-      baseDelay: 200,
-    });
-
-    log.section('Busca S3 finalizada (HeadObject)');
-    return [{ downloadUrl, nomeParaDownload }];
-  }
-
-  // Fallback: ListObjectsV2 em paralelo
-  log.info('HeadObject não encontrou. Buscando com ListObjectsV2...');
+  log.info('Buscando com ListObjectsV2...');
 
   const resultadosPrefixo = await Promise.all(
     prefixes.map(async (p) => {

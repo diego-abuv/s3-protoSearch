@@ -30,6 +30,7 @@ Aplicação web containerizada para busca unificada de arquivos de áudio/docume
 ## Funcionalidades
 
 - **Busca unificada S3 → local**: Tenta o S3 primeiro; se falhar ou não encontrar, busca nos diretórios locais automaticamente.
+- **Pula varredura local se data já indexada**: Diretórios já varridos não são escaneados novamente, reduzindo o tempo de resposta.
 - **URLs assinadas**: Links temporários de 1 hora sem expor credenciais AWS.
 - **Fallback resiliente**: Falha de rede no S3 não quebra o fluxo — o fallback local é executado mesmo com erro.
 - **Autenticação JWT**: Login com access token em memória + refresh token em cookie httpOnly (rotação a cada uso).
@@ -78,7 +79,9 @@ graph TD
             US -->|tenta 1º| S3["S3 ListObjectsV2"]
             S3 -->|falha / não encontrou| IDX["Índice Local SQLite"]
             IDX -->|encontrou| RJSON["Resposta JSON"]
-            IDX -->|não encontrou| LOCAL["Varre dir. local + index on-the-fly"]
+            IDX -->|não encontrou| DATA_CHECK["Data já indexada?"]
+            DATA_CHECK -->|sim| RJSON
+            DATA_CHECK -->|não| LOCAL["Varre dir. local + index on-the-fly"]
             S3 -->|URL assinada 1h| RJSON["Resposta JSON"]
             LOCAL -->|/download-local| RJSON
         end
@@ -135,15 +138,15 @@ graph TD
 
 | Modo | Comando | Acesso |
 |------|---------|--------|
-| **HTTP** (dev/local) | `docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d` | `http://host:3000` |
-| **HTTPS** (produção) | `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` | `https://dominio` |
+| **HTTP** (dev/local) | `docker compose -f docker-compose.yml -f docker-compose.http.yml up -d` | `http://host:3000` |
+| **HTTPS** (produção) | `docker compose -f docker-compose.yml -f docker-compose.https.yml up -d` | `https://dominio` |
 
 ```bash
 # HTTP — app exposta na porta 3000
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.http.yml up -d --build
 
 # HTTPS — Caddy na 80/443, app apenas na rede interna
-docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.https.yml up -d --build
 ```
 
 > Em modo HTTPS, apenas as portas 80 e 443 do Caddy ficam expostas.
@@ -159,7 +162,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 NODE_ENV=busca-ligacoes
 
 # Logs
-PUBLIC_HOST=localhost
+PUBLIC_HOST=seu-dns-ou-ip-publick
 PUBLIC_PROTOCOL=http
 PORT=3000
 
@@ -282,7 +285,7 @@ s3-protoSearch/
 ```json
 { "access_token": "eyJ...", "expires_in": 900 }
 ```
-Define o cookie `refresh_token` (httpOnly, secure, sameSite=strict) com duração de 4 horas.
+Define o cookie `refresh_token` (httpOnly, secure, sameSite=strict) com duração de 2,5 horas.
 
 #### `POST /refresh`
 (Não requer body — lê o `refresh_token` do cookie)
@@ -383,6 +386,7 @@ Define o cookie `refresh_token` (httpOnly, secure, sameSite=strict) com duraçã
 | `nao_encontrado` | `ok` | **200** | S3 não tinha o arquivo, local encontrou |
 | `erro: ...` | `ok` | **200** | S3 indisponível, local assumiu |
 | `nao_encontrado` | `nao_encontrado` | **404** | Arquivo não existe em nenhuma fonte |
+| `nao_encontrado` | `ja_indexado` | **404** | Diretório já havia sido indexado, arquivo não encontrado |
 | `erro: ...` | `erro: ...` | **404** | Ambas as fontes falharam |
 
 ### Códigos HTTP
