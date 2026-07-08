@@ -64,7 +64,7 @@ async function findFiles(dirPath, targetName, signal, maxDepth, searchRoot) {
           const fileBase = path.parse(item.name).name;
           const nomeBase = fileBase.toLowerCase();
 
-          const protocolNumber = (nomeBase.match(/^\d+/) || [nomeBase])[0];
+          const protocolNumber = String(parseInt((nomeBase.match(/^\d+/) || [nomeBase])[0], 10));
           runIndex(
             `INSERT OR IGNORE INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)`,
             [protocolNumber, fullPath, fileBase, searchRoot],

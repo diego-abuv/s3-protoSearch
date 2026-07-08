@@ -45,7 +45,7 @@ function getPathConfigs() {
 
 function extractProtocolNumber(baseName) {
   const match = baseName.match(/^\d+/);
-  return match ? match[0] : baseName;
+  return match ? String(parseInt(match[0], 10)) : baseName;
 }
 
 function saveDb(db) {

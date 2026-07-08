@@ -32,9 +32,9 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
   }
 
   // Tenta o índice local antes do scan completo no filesystem
+  const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase();
   try {
-    const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase();
-    const protocolPrefix = (termoBuscado.match(/^\d+/) || [termoBuscado])[0];
+    const protocolPrefix = String(parseInt((termoBuscado.match(/^\d+/) || [termoBuscado])[0], 10));
     const idxResults = queryIndex(`SELECT file_path, file_name FROM file_index WHERE protocol_number LIKE ? || '%'`, [
       protocolPrefix,
     ]);
@@ -51,6 +51,25 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
     log.info('Índice local: Nenhum arquivo encontrado.');
   } catch (idxErr) {
     log.warn(`Índice local indisponível, seguindo para fallback: ${translateError(idxErr.message)}`);
+  }
+
+  // Fallback: busca por substring no nome do arquivo
+  try {
+    const likeResults = queryIndex(`SELECT file_path, file_name FROM file_index WHERE file_name LIKE ? LIMIT 20`, [
+      `%${termoBuscado}%`,
+    ]);
+    if (likeResults && likeResults.length > 0) {
+      log.success(`Arquivo(s) encontrado(s) no índice local por substring (${likeResults.length}).`);
+      const arquivos = likeResults.map((r) => ({
+        downloadUrl: `/download-local?file=${encodeURIComponent(r.file_path)}`,
+        nomeParaDownload: path.basename(r.file_name),
+      }));
+      log.section(`BUSCA FINALIZADA (${((Date.now() - inicio) / 1000).toFixed(2)}s)`);
+      return { arquivos, status: { s3: s3Status, local: 'indexado' } };
+    }
+    log.info('Índice local: Nenhum arquivo encontrado por substring.');
+  } catch (likeErr) {
+    log.warn(`Busca por substring indisponível: ${translateError(likeErr.message)}`);
   }
 
   log.info('2. Tentando busca local (fallback)...');
