@@ -189,6 +189,13 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
             const nomeParaDownload = path.basename(pathKey);
             const downloadUrl = `/download-local?file=${encodeURIComponent(directPath)}`;
 
+            const protocolNumber = String(parseInt((path.parse(directPath).name.match(/^\d+/) || ['0'])[0], 10));
+            runIndex(
+              `INSERT OR IGNORE INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)`,
+              [protocolNumber, directPath, path.parse(directPath).name, searchRoot],
+            );
+            saveIndex();
+
             log.success(`Arquivo encontrado! Chave: ${pathKey}`);
             return [{ downloadUrl, nomeParaDownload }];
           } catch {
@@ -205,6 +212,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
         const tFind = performance.now();
         const foundFiles = await findFiles(fullPath, termoBuscado, signal, 3, searchRoot);
         markDirScanned(searchRoot, prefixo);
+        saveIndex();
         log.info(
           `   [TIMING] findFiles: ${(performance.now() - tFind).toFixed(0)}ms (indexados ${foundFiles.length} arquivos)`,
         );
