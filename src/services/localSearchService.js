@@ -167,23 +167,13 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
         log.info(`Testando caminho: ${prefixo}`);
 
         const tStat = performance.now();
-        let dirAcessivel = false;
-        for (let attempt = 0; attempt < 3; attempt++) {
-          try {
-            await fs.readdir(fullPath);
-            dirAcessivel = true;
-            break;
-          } catch {
-            if (attempt < 2) {
-              await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
-            }
-          }
-        }
-        if (!dirAcessivel) {
-          log.info(`   [TIMING] Diretório inacessível após 3 tentativas (${(performance.now() - tStat).toFixed(0)}ms)`);
+        try {
+          await fs.stat(fullPath);
+          log.info(`   [TIMING] Diretório OK (${(performance.now() - tStat).toFixed(0)}ms)`);
+        } catch {
+          log.info(`   [TIMING] Diretório inacessível (${(performance.now() - tStat).toFixed(0)}ms)`);
           return null;
         }
-        log.info(`   [TIMING] Diretório OK (${(performance.now() - tStat).toFixed(0)}ms)`);
 
         // Tentativa direta com extensões comuns
         for (const ext of LOCAL_SEARCH_EXTENSIONS) {
@@ -239,12 +229,12 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
       for (const prefixo of prefixosUnicos) {
         const fullPath = path.join(searchRoot, prefixo);
         try {
-          await fs.readdir(fullPath);
+          await fs.stat(fullPath);
           if (!isDirScanned(searchRoot, prefixo)) {
             markDirScanned(searchRoot, prefixo);
           }
         } catch {
-          /* Diretório inacessível, ignora */
+          /* Diretório não existe, ignora */
         }
       }
 
