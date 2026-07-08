@@ -10,7 +10,7 @@ import { loginLimiter, authMiddleware } from '../middleware/auth.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_EXPIRES = '15m';
-const REFRESH_EXPIRES_HOURS = 4;
+const REFRESH_EXPIRES_HOURS = 2.5;
 
 function generateAccessToken(user) {
   return jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
@@ -19,7 +19,10 @@ function generateAccessToken(user) {
 function generateRefreshToken(userId) {
   const raw = crypto.randomBytes(40).toString('hex');
   const hash = crypto.createHash('sha256').update(raw).digest('hex');
-  const expiresAt = new Date(Date.now() + REFRESH_EXPIRES_HOURS * 60 * 60 * 1000).toISOString();
+  const expiresAt = new Date(Date.now() + REFRESH_EXPIRES_HOURS * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 19)
+    .replace('T', ' ');
 
   run('INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES (?, ?, ?)', [userId, hash, expiresAt]);
   save();
