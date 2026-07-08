@@ -53,27 +53,6 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
     log.warn(`Índice local indisponível, seguindo para fallback: ${translateError(idxErr.message)}`);
   }
 
-  const [ano, mes, dia] = pasta.split('/');
-  const variantes = [
-    `${ano}/${String(parseInt(mes, 10))}/${String(parseInt(dia, 10))}`,
-    `${ano}/${String(parseInt(mes, 10))}/${dia.padStart(2, '0')}`,
-    `${ano}/${mes.padStart(2, '0')}/${dia.padStart(2, '0')}`,
-    `${ano}/${mes.padStart(2, '0')}/${String(parseInt(dia, 10))}`,
-  ];
-
-  const jaIndexado = variantes.some((v) => {
-    const found = queryIndex('SELECT 1 FROM file_index WHERE file_path LIKE ? LIMIT 1', [`%/${v}/%`]);
-    return found.length > 0;
-  });
-
-  if (jaIndexado) {
-    log.info(`Data ${pasta} já indexada. Pulando varredura local.`);
-    localStatus = 'nao_encontrado';
-    const duracao = ((Date.now() - inicio) / 1000).toFixed(2);
-    log.section(`BUSCA FINALIZADA (${duracao}s)`);
-    return { arquivos: null, status: { s3: s3Status, local: localStatus } };
-  }
-
   log.info('2. Tentando busca local (fallback)...');
   try {
     const localResult = await findLocally(pasta, nomeProtocolo, log);
