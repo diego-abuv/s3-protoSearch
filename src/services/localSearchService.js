@@ -45,12 +45,19 @@ async function findFiles(dirPath, targetName, signal, maxDepth, searchRoot) {
       if (signal?.aborted) break;
 
       const [currentDir, depth] = stack.pop();
-      let items;
-      try {
-        items = await fs.readdir(currentDir, { withFileTypes: true });
-      } catch {
-        continue;
+      let items = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          items = await fs.readdir(currentDir, { withFileTypes: true });
+          if (items && items.length > 0) break;
+        } catch {
+          //
+        }
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        }
       }
+      if (!items || items.length === 0) continue;
 
       for (const item of items) {
         if (signal?.aborted) break;
@@ -197,7 +204,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
         }
 
         const tFind = performance.now();
-        const foundFiles = await findFiles(fullPath, termoBuscado, signal, 2, searchRoot);
+        const foundFiles = await findFiles(fullPath, termoBuscado, signal, 3, searchRoot);
         markDirScanned(searchRoot, prefixo);
         log.info(
           `   [TIMING] findFiles: ${(performance.now() - tFind).toFixed(0)}ms (indexados ${foundFiles.length} arquivos)`,
@@ -218,6 +225,20 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
       });
 
       const resultado = await raceToFirstResult(promessas);
+
+      // Garante que todas as variantes existentes foram marcadas como escaneadas
+      for (const prefixo of prefixosUnicos) {
+        const fullPath = path.join(searchRoot, prefixo);
+        try {
+          await fs.stat(fullPath);
+          if (!isDirScanned(searchRoot, prefixo)) {
+            markDirScanned(searchRoot, prefixo);
+          }
+        } catch {
+          /* ENOENT, ignora */
+        }
+      }
+
       log.info(`   [TIMING] Busca local resolvida em ${(performance.now() - t0).toFixed(0)}ms`);
 
       // Persiste índice assíncrono (arquivos indexados no fallback)
