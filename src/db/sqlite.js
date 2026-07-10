@@ -64,11 +64,15 @@ export function getDb() {
 
 export function save() {
   if (!db) return;
-  const dir = path.dirname(DB_PATH);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const data = db.export();
-  const buffer = Buffer.from(data);
-  fs.writeFileSync(DB_PATH, buffer);
+  try {
+    const dir = path.dirname(DB_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const data = db.export();
+    const buffer = Buffer.from(data);
+    fs.writeFileSync(DB_PATH, buffer);
+  } catch (err) {
+    console.error('[DB] Falha ao salvar app.db:', err.message);
+  }
 }
 
 export function get(sql, params = []) {
@@ -99,8 +103,12 @@ export function logAudit({ user_id, username, action, target, details, ip }) {
     [user_id, username, action, target ?? null, details ?? null, ip ?? null],
   );
 
-  run("DELETE FROM refresh_tokens WHERE expires_at < datetime('now')");
-  run("DELETE FROM audit_log WHERE created_at < datetime('now', '-90 days')");
+  try {
+    run("DELETE FROM refresh_tokens WHERE expires_at < datetime('now')");
+    run("DELETE FROM audit_log WHERE created_at < datetime('now', '-90 days')");
+  } catch (_) {
+    /* cleanup falhou, não crítico */
+  }
 
   save();
 }

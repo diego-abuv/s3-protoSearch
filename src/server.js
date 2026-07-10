@@ -3,6 +3,13 @@ import 'dotenv/config';
 import os from 'os';
 import { logger } from './utils/logger.js';
 
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  logger.error('Uncaught exception:', err);
+});
+
 function getLocalIp() {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {

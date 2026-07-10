@@ -98,6 +98,9 @@ export function createAuthRoutes() {
       return res.status(401).json({ error: 'credenciais inválidas' });
     }
 
+    run('UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ? AND revoked = 0', [user.id]);
+    save();
+
     const accessToken = generateAccessToken(user);
     const refreshToken = generateRefreshToken(user.id);
 
