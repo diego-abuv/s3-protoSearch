@@ -44,6 +44,18 @@ form.addEventListener('submit', async (event) => {
 
     const raw = await response.text();
 
+    if (!response.ok) {
+      resultadoDiv.innerHTML = '';
+      const card = document.getElementById('tmpl-error-card').content.cloneNode(true);
+      card.querySelector('.fs-6').textContent = 'Erro no servidor';
+      card.querySelector('.text-secondary.small').textContent =
+        raw || `Status ${response.status}`;
+      const pre = card.querySelector('pre');
+      if (pre) pre.remove();
+      resultadoDiv.appendChild(card);
+      return;
+    }
+
     let data;
     try {
       data = JSON.parse(raw);
