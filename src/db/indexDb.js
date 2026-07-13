@@ -11,8 +11,15 @@ export async function initIndexDb() {
   const SQL = await initSqlJs();
 
   if (fs.existsSync(DB_PATH)) {
-    const buffer = fs.readFileSync(DB_PATH);
-    db = new SQL.Database(buffer);
+    try {
+      const buffer = fs.readFileSync(DB_PATH);
+      db = new SQL.Database(buffer);
+      db.export();
+    } catch {
+      console.error('[DB] index.db corrompido, recriando...');
+      fs.unlinkSync(DB_PATH);
+      db = new SQL.Database();
+    }
   } else {
     db = new SQL.Database();
   }

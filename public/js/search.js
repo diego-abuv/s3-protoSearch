@@ -47,9 +47,17 @@ form.addEventListener('submit', async (event) => {
     if (!response.ok) {
       resultadoDiv.innerHTML = '';
       const card = document.getElementById('tmpl-error-card').content.cloneNode(true);
-      card.querySelector('.fs-6').textContent = 'Erro no servidor';
-      card.querySelector('.text-secondary.small').textContent =
-        raw || `Status ${response.status}`;
+
+      if (response.status === 404) {
+        card.querySelector('.fs-6').textContent = 'Arquivo não encontrado';
+        card.querySelector('.text-secondary.small').textContent =
+          'Nenhum arquivo encontrado para este protocolo nesta data.';
+      } else {
+        card.querySelector('.fs-6').textContent = 'Erro no servidor';
+        card.querySelector('.text-secondary.small').textContent =
+          raw || `Status ${response.status}`;
+      }
+
       const pre = card.querySelector('pre');
       if (pre) pre.remove();
       resultadoDiv.appendChild(card);
