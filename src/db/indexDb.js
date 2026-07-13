@@ -79,8 +79,12 @@ export function markDirScanned(searchRoot, dirPath) {
 
 export function saveIndex() {
   if (!db) return;
-  const dir = path.dirname(DB_PATH);
-  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  const data = db.export();
-  fs.writeFileSync(DB_PATH, Buffer.from(data));
+  try {
+    const dir = path.dirname(DB_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const data = db.export();
+    fs.writeFileSync(DB_PATH, Buffer.from(data));
+  } catch (err) {
+    console.error('[DB] Falha ao salvar index.db:', err.message);
+  }
 }
