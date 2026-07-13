@@ -9,6 +9,9 @@ process.on('unhandledRejection', (reason) => {
 process.on('uncaughtException', (err) => {
   logger.error('Uncaught exception:', err);
 });
+process.on('exit', (code) => {
+  console.error(`[FATAL] Processo encerrou com código ${code}`);
+});
 
 function getLocalIp() {
   const interfaces = os.networkInterfaces();
