@@ -1,11 +1,21 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
+import rateLimit from 'express-rate-limit';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.js';
 import { all, get, run, save, logAudit } from '../db/sqlite.js';
 import { validatePassword, validateUsername, sanitizeInput } from '../utils/validation.js';
 
+const adminLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  standardHeaders: false,
+  legacyHeaders: false,
+  message: { error: 'Muitas requisições. Tente novamente.' },
+});
+
 export function createAdminRoutes() {
   const router = express.Router();
+  router.use(adminLimiter);
 
   router.get('/admin/users', authMiddleware, adminMiddleware, (req, res) => {
     // Lógica para listar usuários

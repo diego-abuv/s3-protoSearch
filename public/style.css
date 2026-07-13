@@ -722,4 +722,16 @@ input[type="date"].is-invalid {
   font-weight: 700;
 }
 
+.row-overflow-auto {
+  overflow-y: auto;
+}
+
+.pre-wrap {
+  white-space: pre-wrap;
+}
+
+.color-inherit {
+  color: inherit;
+}
+
 

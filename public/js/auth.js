@@ -4,10 +4,6 @@
 
 const Auth = (() => {
   let accessToken = null;
-  let refreshTimer = null;
-
-  // Renova 1 minuto antes de expirar (15min - 1min = 14min)
-  const REFRESH_BEFORE_EXPIRY_MS = 14 * 60 * 1000;
 
   function getAccessToken() {
     return accessToken;
@@ -31,7 +27,6 @@ const Auth = (() => {
     }
 
     accessToken = data.access_token;
-    scheduleRefresh();
     return data;
   }
 
@@ -84,7 +79,6 @@ const Auth = (() => {
       if (response.ok) {
         const data = await response.json();
         accessToken = data.access_token;
-        scheduleRefresh();
         return true;
       }
       return false;
@@ -94,16 +88,16 @@ const Auth = (() => {
   }
 
   async function authFetch(url, options = {}) {
-    if (!accessToken) {
+    const headers = { ...options.headers, 'Authorization': `Bearer ${accessToken}` };
+    let response = await fetch(url, { ...options, headers });
+
+    if (response.status === 401 && accessToken) {
       const refreshed = await refreshSession();
-      if (!refreshed) {
-        window.location.href = '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
-        throw new Error('Sessão expirada');
+      if (refreshed) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+        response = await fetch(url, { ...options, headers });
       }
     }
-
-    const headers = { ...options.headers, 'Authorization': `Bearer ${accessToken}` };
-    const response = await fetch(url, { ...options, headers });
 
     if (response.status === 401) {
       clearSession();
@@ -114,20 +108,8 @@ const Auth = (() => {
     return response;
   }
 
-  function scheduleRefresh() {
-    clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(async () => {
-      const success = await refreshSession();
-      if (!success) {
-        clearSession();
-        window.location.href = '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
-      }
-    }, REFRESH_BEFORE_EXPIRY_MS);
-  }
-
   function clearSession() {
     accessToken = null;
-    clearTimeout(refreshTimer);
   }
 
   return {

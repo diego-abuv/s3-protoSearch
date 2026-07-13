@@ -7,6 +7,8 @@ const API_KEY = process.env.API_KEY;
 export const loginLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 5,
+  standardHeaders: false,
+  legacyHeaders: false,
   message: { error: 'Muitas tentativas de login. Tente novamente daqui um minuto.' },
 });
 
