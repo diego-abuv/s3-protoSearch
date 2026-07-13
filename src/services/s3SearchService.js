@@ -1,7 +1,6 @@
 import 'dotenv/config';
-import { S3Client, ListObjectsV2Command, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import https from 'https';
 import path from 'path';
 import { logger } from '../utils/logger.js';
@@ -114,28 +113,13 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
 
   log.info(`Gerando URLs para ${arquivosEncontrados.length} arquivos`);
 
-  const resultados = await Promise.all(
-    arquivosEncontrados.map(async (obj) => {
-      const nomeParaDownload = path.basename(obj.Key);
-
-      const getCommand = new GetObjectCommand({
-        Bucket: bucketName,
-        Key: obj.Key,
-        ResponseContentDisposition: `attachment; filename="${nomeParaDownload}"`,
-      });
-
-      const downloadUrl = await withRetry(() => getSignedUrl(s3Client, getCommand, { expiresIn: 3600 }), {
-        label: 'getSignedUrl',
-        maxRetries: 1,
-        baseDelay: 200,
-      });
-
-      return {
-        downloadUrl,
-        nomeParaDownload,
-      };
-    }),
-  );
+  const resultados = arquivosEncontrados.map((obj) => {
+    const nomeParaDownload = path.basename(obj.Key);
+    return {
+      downloadUrl: `/download-s3?key=${encodeURIComponent(obj.Key)}&nome=${encodeURIComponent(nomeParaDownload)}`,
+      nomeParaDownload,
+    };
+  });
 
   log.section('Busca S3 finalizada');
   return resultados;

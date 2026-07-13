@@ -13,13 +13,26 @@ import { createAdminRoutes } from './routes/admin.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const PROTECTED_JS = ['/js/search.js', '/js/admin.js', '/js/render.js'];
+
 export async function createApp(searchableService) {
   const app = express();
 
+  app.disable('x-powered-by');
   app.use(express.json());
   app.use(cookieParser());
 
   app.use(securityHeaders);
+
+  app.use((req, res, next) => {
+    if (PROTECTED_JS.includes(req.path)) {
+      const refreshToken = req.cookies?.refresh_token;
+      if (!refreshToken) {
+        return res.status(404).send('Not found');
+      }
+    }
+    next();
+  });
 
   await initDatabase();
   await initIndexDb();
