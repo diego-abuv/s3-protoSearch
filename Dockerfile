@@ -1,5 +1,5 @@
 # Usa uma versão estável e leve do Node
-FROM node:20-alpine
+FROM node:22-alpine
 
 # Define o diretório de trabalho
 WORKDIR /app
