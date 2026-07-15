@@ -7,6 +7,8 @@
     "start": "node src/server.js",
     "dev": "node --watch --watch-path=public src/server.js",
     "index-files": "node scripts/indexFiles.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --write src/"
@@ -32,6 +34,7 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.6",
     "globals": "^17.6.0",
-    "prettier": "^3.8.4"
+    "prettier": "^3.8.4",
+    "vitest": "^4.1.10"
   }
 }

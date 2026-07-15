@@ -211,13 +211,14 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
 
         const tFind = performance.now();
         const foundFiles = await findFiles(fullPath, termoBuscado, signal, 3, searchRoot);
-        markDirScanned(searchRoot, prefixo);
         saveIndex();
         log.info(
           `   [TIMING] findFiles: ${(performance.now() - tFind).toFixed(0)}ms (indexados ${foundFiles.length} arquivos)`,
         );
 
         if (foundFiles.length === 0) return null;
+
+        markDirScanned(searchRoot, prefixo);
 
         return foundFiles.map((fp) => {
           const relativePath = path.relative(relativeBasePath, fp);
