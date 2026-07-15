@@ -1,7 +1,7 @@
 # Buscador de Protocolos S3 (s3-protoSearch)
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Node.js-20.x-green?style=for-the-badge&logo=nodedotjs" alt="Node.js">
+  <img src="https://img.shields.io/badge/Node.js-22.x-green?style=for-the-badge&logo=nodedotjs" alt="Node.js">
   <img src="https://img.shields.io/badge/S3-Compatible-orange?style=for-the-badge&logo=amazons3" alt="S3">
   <img src="https://img.shields.io/badge/Docker-Ready-blue?style=for-the-badge&logo=docker" alt="Docker">
   <img src="https://img.shields.io/badge/Fallback-Local-brightgreen?style=for-the-badge" alt="Fallback">
@@ -125,7 +125,7 @@ graph TD
 
 | Tecnologia | Função |
 |-----------|--------|
-| Node.js 20 + Express 5 | Servidor HTTP |
+| Node.js 22 + Express 5 | Servidor HTTP |
 | AWS SDK v3 (@aws-sdk/client-s3) | Cliente S3 com signed URLs |
 | Docker + docker-compose | Containerização |
 | Caddy 2 | Reverse proxy, TLS interno (self-signed), redirect HTTP→HTTPS |
@@ -233,9 +233,12 @@ s3-protoSearch/
 ├── assets/                       # Screenshots do README
 ├── .env.example                  # Template de configuração
 ├── .gitattributes                # Normalização LF
+├── .prettierrc                   # Config Prettier
 ├── Caddyfile                     # Reverse proxy com TLS
 ├── docker-compose.yml            # Orquestração Docker
-├── Dockerfile                    # Node 20-alpine
+├── Dockerfile                    # Node 22-alpine
+├── eslint.config.js              # ESLint + Prettier
+├── vitest.config.js              # Config Vitest
 ├── src/
 │   ├── server.js                 # Entry point (validação de secrets)
 │   ├── app.js                    # Express + CSP + HSTS + rotas
@@ -247,7 +250,7 @@ s3-protoSearch/
 │   ├── routes/
 │   │   ├── auth.js               # /login, /refresh, /logout, /me, /register
 │   │   ├── search.js             # POST /buscar-arquivo
-│   │   ├── download.js           # GET /download-local
+│   │   ├── download.js           # GET /download-local, /download-s3
 │   │   └── admin.js              # CRUD usuários + audit log + stats
 │   ├── services/
 │   │   ├── unifiedSearchService.js   # S3 → Índice → Local
@@ -269,6 +272,26 @@ s3-protoSearch/
 │   ├── style.css                 # TRON + light mode
 │   ├── vendor/                   # Bootstrap local
 │   └── js/                       # Módulos: auth, app, login, admin, search, render, theme, utils
+├── test/
+│   ├── db/
+│   │   ├── sqlite.test.js        # 13 testes
+│   │   └── indexDb.test.js       # 10 testes
+│   ├── middleware/
+│   │   └── auth.test.js          # 14 testes
+│   ├── routes/
+│   │   ├── auth.test.js          # 23 testes
+│   │   ├── admin.test.js         # 24 testes
+│   │   ├── search.test.js        # 8 testes
+│   │   └── download.test.js      # 8 testes
+│   ├── services/
+│   │   ├── s3SearchService.test.js       # 8 testes
+│   │   ├── localSearchService.test.js    # 4 testes
+│   │   └── unifiedSearchService.test.js  # 7 testes
+│   └── utils/
+│       ├── validation.test.js    # 26 testes
+│       ├── errorCodes.test.js    # 15 testes
+│       ├── retry.test.js         # 18 testes
+│       └── securityHeaders.test.js  # 7 testes
 ```
 
 ---
@@ -365,6 +388,17 @@ Define o cookie `refresh_token` (httpOnly, secure, sameSite=strict) com duraçã
 ?file=/sharepoint/arquivo.mp3
 ```
 
+#### `GET /download-s3`
+(Requer `Authorization: Bearer <access_token>` ou `x-api-key`)
+
+```
+?key=2024/01/02/arquivo.mp3&nome=arquivo.mp3
+```
+
+- `key`: Caminho S3 do arquivo (obrigatório)
+- `nome`: Nome personalizado para download (opcional, header Content-Disposition)
+- Retorna **200** com stream do arquivo ou **500** em caso de erro S3
+
 ---
 
 ### Administração (requer role `admin`)
@@ -373,7 +407,7 @@ Define o cookie `refresh_token` (httpOnly, secure, sameSite=strict) com duraçã
 |--------|------|-----------|
 | `GET` | `/admin/users` | Lista todos os usuários |
 | `POST` | `/admin/users` | Cria usuário (body: `{ username, password, role }`) |
-| `PATCH` | `/admin/users/:id` | Atualiza usuário |
+| `PATCH` | `/admin/users/:id` | Atualiza usuário (body: `{ username?, password?, role? }`) |
 | `DELETE` | `/admin/users/:id` | Remove usuário |
 | `GET` | `/admin/audit` | Log de auditoria paginado |
 | `GET` | `/admin/stats` | Estatísticas (total usuários, tokens ativos, ações) |
@@ -496,7 +530,7 @@ docker compose up -d --build
 ```bash
 curl -k -X POST https://s3-protosearch.local/register \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"Admin@123","adminKey":"SUA_ADMIN_KEY"}'
+  -d '{"username":"admin","password":"Mudar@123456","adminKey":"SUA_ADMIN_KEY"}'
 ```
 
 ### 6. Acesso DNS
@@ -550,6 +584,30 @@ npm run dev                     # Node --watch com auto-restart
 ```
 
 > Em desenvolvimento sem Docker, o Caddy não está disponível. Acesse via `http://localhost:PORT`. O cookie refresh_token não terá a flag `secure` (esperado para HTTP local).
+
+---
+
+## Testes
+
+**185 testes — 14 arquivos — Vitest + Supertest**
+
+| Comando | Descrição |
+|---------|-----------|
+| `npm test` | Roda todos os testes uma vez |
+| `npm run test:watch` | Modo watch (desenvolvimento) |
+| `npm run lint` | Verifica lint (ESLint + Prettier) |
+| `npm run lint:fix` | Corrige lint automaticamente |
+| `npm run format` | Formata código com Prettier |
+
+### Cobertura por fase
+
+| Fase | Arquivos | Testes |
+|------|----------|--------|
+| Foundation (validação, erros) | 2 | 41 |
+| Database (sqlite, indexDb) | 2 | 23 |
+| Middleware + Utilitários | 3 | 39 |
+| Services (S3, Local, Unificado) | 3 | 19 |
+| Routes (auth, admin, search, download) | 4 | 63 |
 
 ---
 
