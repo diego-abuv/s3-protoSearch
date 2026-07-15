@@ -26,7 +26,7 @@ const s3Client = new S3Client({
 const rawBucketName = process.env.AWS_BUCKET_NAME || '';
 const bucketName = rawBucketName.replace(/s3:\/\/|\//g, '');
 
-function generatePrefixes(ano, mes, dia) {
+export function generatePrefixes(ano, mes, dia) {
   const m = Number(mes);
   const d = Number(dia);
 
