@@ -17,11 +17,7 @@ vi.mock('../../src/db/indexDb.js', () => ({
 }));
 
 import fs from 'fs/promises';
-import { runIndex, saveIndex, isDirScanned, markDirScanned } from '../../src/db/indexDb.js';
-
-function mockDirent(name, isDir = false) {
-  return { name, isDirectory: () => isDir };
-}
+import { isDirScanned } from '../../src/db/indexDb.js';
 
 describe('findFileAndGetSignedUrl', () => {
   let findFileAndGetSignedUrl;
@@ -39,7 +35,7 @@ describe('findFileAndGetSignedUrl', () => {
 
   it('retorna null quando ano nao tem configuracao', async () => {
     const keep = {};
-    for (const key of Object.keys(process.env).filter(k => k.startsWith('YEARS_'))) {
+    for (const key of Object.keys(process.env).filter((k) => k.startsWith('YEARS_'))) {
       keep[key] = process.env[key];
       delete process.env[key];
     }

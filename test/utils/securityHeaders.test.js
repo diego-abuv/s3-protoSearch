@@ -67,10 +67,7 @@ describe('securityHeaders', () => {
 
     securityHeaders(req, res, next);
 
-    expect(res.setHeader).toHaveBeenCalledWith(
-      'Strict-Transport-Security',
-      'max-age=31536000; includeSubDomains',
-    );
+    expect(res.setHeader).toHaveBeenCalledWith('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
   });
 
   it('chama next()', () => {

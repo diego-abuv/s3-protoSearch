@@ -40,10 +40,7 @@ describe('withRetry', () => {
   });
 
   it('respeita baseDelay customizado (tempo entre retries)', async () => {
-    const fn = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('econnrefused'))
-      .mockResolvedValue('conectado');
+    const fn = vi.fn().mockRejectedValueOnce(new Error('econnrefused')).mockResolvedValue('conectado');
 
     const inicio = Date.now();
     await withRetry(fn, { maxRetries: 2, baseDelay: 100 });
@@ -54,19 +51,13 @@ describe('withRetry', () => {
   });
 
   it('retorna label correta no log', async () => {
-    const fn = vi
-      .fn()
-      .mockRejectedValueOnce(new Error('timeout'))
-      .mockResolvedValue('ok');
+    const fn = vi.fn().mockRejectedValueOnce(new Error('timeout')).mockResolvedValue('ok');
 
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
     await withRetry(fn, { maxRetries: 2, baseDelay: 10, label: 'MinhaOperacao' });
 
-    expect(logSpy).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.stringContaining('MinhaOperacao'),
-    );
+    expect(logSpy).toHaveBeenCalledWith(expect.any(String), expect.stringContaining('MinhaOperacao'));
     logSpy.mockRestore();
   });
 });

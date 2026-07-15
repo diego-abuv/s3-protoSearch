@@ -29,9 +29,7 @@ describe('findFileAndGetSignedUrl', () => {
   });
 
   it('retorna resultado do S3 quando S3 encontra', async () => {
-    findInS3.mockResolvedValue([
-      { downloadUrl: '/download-s3?key=file.mp3', nomeParaDownload: 'file.mp3' },
-    ]);
+    findInS3.mockResolvedValue([{ downloadUrl: '/download-s3?key=file.mp3', nomeParaDownload: 'file.mp3' }]);
 
     const result = await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
 
@@ -43,9 +41,7 @@ describe('findFileAndGetSignedUrl', () => {
 
   it('retorna resultado do indice exato quando S3 nao encontra', async () => {
     findInS3.mockResolvedValue(null);
-    queryIndex.mockReturnValue([
-      { file_path: '/mnt/share/file.mp3', file_name: 'file.mp3' },
-    ]);
+    queryIndex.mockReturnValue([{ file_path: '/mnt/share/file.mp3', file_name: 'file.mp3' }]);
 
     const result = await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
 
@@ -84,7 +80,9 @@ describe('findFileAndGetSignedUrl', () => {
 
   it('segue para local FS mesmo quando queryIndex lanca erro', async () => {
     findInS3.mockResolvedValue(null);
-    queryIndex.mockImplementation(() => { throw new Error('db locked'); });
+    queryIndex.mockImplementation(() => {
+      throw new Error('db locked');
+    });
     findLocally.mockResolvedValue([
       { downloadUrl: '/download-local?file=/mnt/share/file.mp3', nomeParaDownload: 'file.mp3' },
     ]);

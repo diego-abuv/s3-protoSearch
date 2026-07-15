@@ -11,7 +11,7 @@ vi.mock('fs', () => {
   return { ...mockFs, default: mockFs };
 });
 
-import { initIndexDb, getIndexDb, queryIndex, runIndex, isDirScanned, markDirScanned, saveIndex } from '../../src/db/indexDb.js';
+import { initIndexDb, queryIndex, runIndex, isDirScanned, markDirScanned, saveIndex } from '../../src/db/indexDb.js';
 
 describe('sem initIndexDb', () => {
   it('isDirScanned() retorna false sem init', () => {
@@ -34,7 +34,7 @@ describe('com initIndexDb', () => {
   });
 
   it('queryIndex() retorna resultados', () => {
-    runIndex("INSERT INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)", [
+    runIndex('INSERT INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)', [
       '123',
       '/path/to/file.wav',
       'file.wav',
@@ -51,13 +51,13 @@ describe('com initIndexDb', () => {
   });
 
   it('runIndex() executa comando', () => {
-    runIndex("INSERT INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)", [
+    runIndex('INSERT INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)', [
       '456',
       '/path/to/audio.wav',
       'audio.wav',
       '/sharepoint/test',
     ]);
-    const rows = queryIndex("SELECT * FROM file_index WHERE protocol_number = ?", ['456']);
+    const rows = queryIndex('SELECT * FROM file_index WHERE protocol_number = ?', ['456']);
     expect(rows).toHaveLength(1);
   });
 

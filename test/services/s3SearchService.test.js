@@ -8,8 +8,12 @@ vi.mock('@aws-sdk/client-s3', () => ({
 import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
 
 const mockSend = vi.fn();
-S3Client.mockImplementation(function () { return { send: mockSend }; });
-ListObjectsV2Command.mockImplementation(function (input) { return { input }; });
+S3Client.mockImplementation(function () {
+  return { send: mockSend };
+});
+ListObjectsV2Command.mockImplementation(function (input) {
+  return { input };
+});
 
 describe('generatePrefixes', () => {
   let generatePrefixes;
@@ -21,23 +25,13 @@ describe('generatePrefixes', () => {
 
   it('retorna 4 prefixos para mes/dia sem padding', () => {
     const result = generatePrefixes('2025', '1', '1');
-    expect(result).toEqual([
-      '2025/1/1/',
-      '2025/1/01/',
-      '2025/01/01/',
-      '2025/01/1/',
-    ]);
+    expect(result).toEqual(['2025/1/1/', '2025/1/01/', '2025/01/01/', '2025/01/1/']);
   });
 
   it('retorna 4 prefixos sem duplicatas para mes/dia com padding', () => {
     const result = generatePrefixes('2025', '01', '01');
     expect(result).toHaveLength(4);
-    expect(result).toEqual([
-      '2025/1/1/',
-      '2025/1/01/',
-      '2025/01/01/',
-      '2025/01/1/',
-    ]);
+    expect(result).toEqual(['2025/1/1/', '2025/1/01/', '2025/01/01/', '2025/01/1/']);
   });
 
   it('preserva mes=12 nas combinacoes', () => {
@@ -92,9 +86,7 @@ describe('findFileAndGetSignedUrl', () => {
 
   it('retorna null quando S3 nao encontra arquivos', async () => {
     mockSend.mockResolvedValue({
-      Contents: [
-        { Key: '2024/01/02/outro_arquivo.pdf' },
-      ],
+      Contents: [{ Key: '2024/01/02/outro_arquivo.pdf' }],
     });
 
     const result = await findFileAndGetSignedUrl('2024/01/02', '0336637208');
@@ -105,8 +97,7 @@ describe('findFileAndGetSignedUrl', () => {
   it('propaga erro quando S3 lanca excecao', async () => {
     mockSend.mockRejectedValue(new Error('AccessDenied'));
 
-    await expect(findFileAndGetSignedUrl('2024/01/02', '0336637208'))
-      .rejects.toThrow('AccessDenied');
+    await expect(findFileAndGetSignedUrl('2024/01/02', '0336637208')).rejects.toThrow('AccessDenied');
   });
 
   it('combina resultados de multiplos prefixos', async () => {

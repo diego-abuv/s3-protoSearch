@@ -106,7 +106,7 @@ export function logAudit({ user_id, username, action, target, details, ip }) {
   try {
     run("DELETE FROM refresh_tokens WHERE expires_at < datetime('now')");
     run("DELETE FROM audit_log WHERE created_at < datetime('now', '-90 days')");
-  } catch (_) {
+  } catch {
     /* cleanup falhou, não crítico */
   }
 
