@@ -77,7 +77,7 @@ function buildDownloadButton(arquivo) {
   const a = tmpl.querySelector('a');
   a.textContent += escapeHtml(arquivo.nomeParaDownload);
 
-  a.href = '#';
+  a.href = arquivo.downloadUrl;
   a.addEventListener('click', async (e) => {
     e.preventDefault();
     try {
