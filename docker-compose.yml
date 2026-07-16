@@ -1,12 +1,32 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: s3-redis
+    restart: always
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   s3-protosearch:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: s3-protosearch
     restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
     env_file:
       - .env
+    environment:
+      - REDIS_URL=redis://redis:6379
     volumes:
       - /sharepoint:/sharepoint:ro
       - /db:/db
+
+volumes:
+  redis_data:

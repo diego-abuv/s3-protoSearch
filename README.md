@@ -4,6 +4,7 @@
   <img src="https://img.shields.io/badge/Node.js-22.x-green?style=for-the-badge&logo=nodedotjs" alt="Node.js">
   <img src="https://img.shields.io/badge/S3-Compatible-orange?style=for-the-badge&logo=amazons3" alt="S3">
   <img src="https://img.shields.io/badge/Docker-Ready-blue?style=for-the-badge&logo=docker" alt="Docker">
+  <img src="https://img.shields.io/badge/Redis-7.x-red?style=for-the-badge&logo=redis" alt="Redis">
   <img src="https://img.shields.io/badge/Fallback-Local-brightgreen?style=for-the-badge" alt="Fallback">
 </p>
 
@@ -44,6 +45,7 @@ Aplicação web containerizada para busca unificada de arquivos de áudio/docume
 - **Interface glassmorphism**: Tema escuro (TRON) e claro, toggle com persistência em localStorage.
 - **Múltiplas estruturas de diretório**: Suporte a subpastas via configuração no `.env`.
 - **Componentes sem CDN**: Bootstrap servido localmente, zero dependência externa no frontend.
+- **Cache Redis por prefixo S3**: Listagens S3 cacheadas por prefixo (TTL 300s), evitando chamadas repetidas ao bucket para arquivos na mesma data. Fallback silencioso se Redis indisponível.
 
 ---
 
@@ -76,7 +78,10 @@ graph TD
         subgraph "Busca"
             B["/buscar-arquivo<br/>authMiddleware + rate 30/min"]
             B --> US["UnifiedSearchService"]
-            US -->|tenta 1º| S3["S3 ListObjectsV2"]
+            US --> REDIS["Redis<br/>cache por prefixo + termo"]
+            REDIS -->|hit| RJSON["Resposta JSON"]
+            REDIS -->|miss| S3["S3 ListObjectsV2"]
+            S3 -->|cacheia listing| REDIS
             S3 -->|falha / não encontrou| IDX["Índice Local SQLite"]
             IDX -->|encontrou| RJSON["Resposta JSON"]
             IDX -->|não encontrou| DATA_CHECK["Data já indexada?"]
@@ -115,6 +120,7 @@ graph TD
     style C fill:#009688,stroke:#fff,stroke-width:2px
     style C80 fill:#607D8B,stroke:#fff,stroke-width:1px
     style E fill:#4CAF50,stroke:#333,stroke-width:2px
+    style REDIS fill:#DC382D,stroke:#fff,stroke-width:2px
     style S3 fill:#FF9800,stroke:#333,stroke-width:2px
     style DB fill:#9C27B0,stroke:#fff,stroke-width:2px
 ```
@@ -129,6 +135,7 @@ graph TD
 | AWS SDK v3 (@aws-sdk/client-s3) | Cliente S3 com signed URLs |
 | Docker + docker-compose | Containerização |
 | Caddy 2 | Reverse proxy, TLS interno (self-signed), redirect HTTP→HTTPS |
+| Redis 7 + ioredis | Cache de listagens S3 (opcional, fallback silencioso) |
 | Bootstrap 5.3.3 (local) | UI components |
 | CSS3 (custom) | Glassmorphism, theme toggle, TRON palette |
 
@@ -201,6 +208,7 @@ ADMIN_KEY=chave-para-criar-usuarios
 | `JWT_SECRET` | Sim | Chave para assinar tokens JWT (sem fallback) |
 | `API_KEY` | Sim | Chave de API para integração n8n |
 | `ADMIN_KEY` | Sim | Chave mestra para criar usuários admin |
+| `REDIS_URL` | Não | URL do Redis (ex: `redis://redis:6379`). Cache opcional — fallback silencioso se não configurado |
 
 O sistema testa 4 variações de data (`YYYY/M/D`, `YYYY/M/DD`, `YYYY/MM/DD`, `YYYY/MM/D`) em paralelo com `AbortController` — ao encontrar, os demais são abortados.
 
@@ -261,7 +269,8 @@ s3-protoSearch/
 │       ├── retry.js                  # Exponential backoff
 │       ├── securityHeaders.js        # CSP, HSTS, X-Frame-Options
 │       ├── logger.js                 # Logger estruturado
-│       └── validation.js             # Validação de senha forte
+│       ├── validation.js             # Validação de senha forte
+│       └── cache.js                  # Cache Redis com fallback silencioso
 ├── scripts/
 │   ├── indexFiles.js              # Indexação em lote do diretório local
 │   └── migrateIndex.js            # Migração app.db → index.db
@@ -291,7 +300,8 @@ s3-protoSearch/
 │       ├── validation.test.js    # 26 testes
 │       ├── errorCodes.test.js    # 15 testes
 │       ├── retry.test.js         # 18 testes
-│       └── securityHeaders.test.js  # 7 testes
+│       ├── securityHeaders.test.js  # 7 testes
+│       └── cache.test.js        # 12 testes
 ```
 
 ---
@@ -589,7 +599,7 @@ npm run dev                     # Node --watch com auto-restart
 
 ## Testes
 
-**185 testes — 14 arquivos — Vitest + Supertest**
+**201 testes — 15 arquivos — Vitest + Supertest**
 
 | Comando | Descrição |
 |---------|-----------|
@@ -606,8 +616,38 @@ npm run dev                     # Node --watch com auto-restart
 | Foundation (validação, erros) | 2 | 41 |
 | Database (sqlite, indexDb) | 2 | 23 |
 | Middleware + Utilitários | 3 | 39 |
-| Services (S3, Local, Unificado) | 3 | 19 |
+| Cache Redis | 1 | 12 |
+| Services (S3, Local, Unificado) | 3 | 23 |
 | Routes (auth, admin, search, download) | 4 | 63 |
+
+---
+
+## Cache Redis (Fase 3)
+
+Cache opcional baseado em Redis para evitar chamadas repetidas ao S3.
+
+### Comportamento
+
+| Chave | TTL | Descrição |
+|-------|-----|-----------|
+| `s3-list:{prefixo}` | 300s | Listing completo do prefixo S3 (ex: `2025/4/4/`) |
+| `busca:{pasta}:{termo}` | 300s | Resultado unificado da busca |
+
+### Estratégia
+
+1. **Primeira busca** no prefixo → `ListObjectsV2` (S3) → cacheia listing inteiro no Redis
+2. **Buscas seguintes** no mesmo prefixo → filtra listing cacheado localmente (ms)
+3. **Se Redis cai** → fallback silencioso, busca S3 direto
+
+### Ativação
+
+- **Docker**: `REDIS_URL=redis://redis:6379` (configurado automaticamente no `docker-compose.yml`)
+- **Local**: Descomente `REDIS_URL=redis://localhost:6379` no `.env`
+- **Sem Redis**: App funciona normalmente, sem cache
+
+### Connect Timeout
+
+Redis tem timeout de 2s (`connectTimeout: 2000`). Se Redis estiver offline, a busca continua normalmente via S3 com overhead máximo de 2s.
 
 ---
 

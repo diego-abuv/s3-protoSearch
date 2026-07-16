@@ -1,5 +1,15 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 
+vi.hoisted(() => {
+  process.env.REDIS_URL = 'redis://localhost:6379';
+});
+
+vi.mock('../../src/utils/cache.js', () => ({
+  cacheGet: vi.fn(),
+  cacheSet: vi.fn(),
+  cacheDel: vi.fn(),
+}));
+
 vi.mock('../../src/services/s3SearchService.js', () => ({
   findFileAndGetSignedUrl: vi.fn(),
 }));
@@ -12,6 +22,7 @@ vi.mock('../../src/db/indexDb.js', () => ({
   queryIndex: vi.fn(),
 }));
 
+import { cacheGet, cacheSet } from '../../src/utils/cache.js';
 import { findFileAndGetSignedUrl as findInS3 } from '../../src/services/s3SearchService.js';
 import { findFileAndGetSignedUrl as findLocally } from '../../src/services/localSearchService.js';
 import { queryIndex } from '../../src/db/indexDb.js';
@@ -26,6 +37,8 @@ describe('findFileAndGetSignedUrl', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    cacheGet.mockReset();
+    cacheSet.mockReset();
   });
 
   it('retorna resultado do S3 quando S3 encontra', async () => {
@@ -114,5 +127,30 @@ describe('findFileAndGetSignedUrl', () => {
 
     expect(result.arquivos).toBeNull();
     expect(result.status.local).toContain('erro');
+  });
+
+  it('usa cache da busca unificada quando disponivel', async () => {
+    const cachedResult = {
+      arquivos: [{ downloadUrl: '/download-s3?key=cached.mp3', nomeParaDownload: 'cached.mp3' }],
+      status: { s3: 'ok', local: 'nao_consultado' },
+    };
+    cacheGet.mockResolvedValue(cachedResult);
+
+    const result = await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
+
+    expect(result).toEqual(cachedResult);
+    expect(findInS3).not.toHaveBeenCalled();
+    expect(findLocally).not.toHaveBeenCalled();
+    expect(queryIndex).not.toHaveBeenCalled();
+  });
+
+  it('popula cache apos buscar normalmente', async () => {
+    cacheGet.mockResolvedValue(null);
+    findInS3.mockResolvedValue([{ downloadUrl: '/download-s3?key=file.mp3', nomeParaDownload: 'file.mp3' }]);
+
+    const result = await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
+
+    expect(result.status.s3).toBe('ok');
+    expect(cacheSet).toHaveBeenCalled();
   });
 });

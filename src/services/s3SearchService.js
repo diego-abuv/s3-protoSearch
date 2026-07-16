@@ -5,6 +5,7 @@ import https from 'https';
 import path from 'path';
 import { logger } from '../utils/logger.js';
 import { withRetry } from '../utils/retry.js';
+import { cacheGet, cacheSet } from '../utils/cache.js';
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION,
@@ -36,11 +37,8 @@ export function generatePrefixes(ano, mes, dia) {
   return [...new Set([`${ano}/${m}/${d}/`, `${ano}/${m}/${d2}/`, `${ano}/${m2}/${d2}/`, `${ano}/${m2}/${d}/`])];
 }
 
-async function searchPrefix(prefixo, termoBuscado, signal, log) {
-  if (signal?.aborted) return null;
-
-  log.info(`Testando prefixo: ${prefixo}`);
-
+async function fetchS3Listing(prefixo, signal) {
+  let allContents = [];
   let continuationToken = undefined;
   let isTruncated = true;
 
@@ -61,25 +59,57 @@ async function searchPrefix(prefixo, termoBuscado, signal, log) {
     });
 
     if (listResponse.Contents) {
-      const encontrados = listResponse.Contents.filter((obj) => {
-        const nomeBase = path.parse(obj.Key).name.toLowerCase();
-        return nomeBase.includes(termoBuscado);
-      });
-
-      if (encontrados.length > 0) {
-        log.success(`Encontrados ${encontrados.length} arquivo(s) em ${prefixo}`);
-        return encontrados;
-      }
+      allContents.push(...listResponse.Contents);
     }
 
     isTruncated = !!listResponse.IsTruncated;
     continuationToken = listResponse.NextContinuationToken;
   }
 
+  return allContents;
+}
+
+async function searchPrefix(prefixo, termoBuscado, signal, log) {
+  if (signal?.aborted) return null;
+
+  log.info(`Testando prefixo: ${prefixo}`);
+
+  const cacheKey = `s3-list:${prefixo}`;
+  const cachedListing = await cacheGet(cacheKey);
+
+  let contents;
+
+  if (cachedListing) {
+    log.info(`Cache hit: lista S3 para ${prefixo}`);
+    contents = cachedListing;
+  } else {
+    const fetched = await fetchS3Listing(prefixo, signal);
+    if (!fetched) return null;
+    await cacheSet(cacheKey, fetched, 300);
+    contents = fetched;
+  }
+
+  const encontrados = contents.filter((obj) => {
+    const nomeBase = path.parse(obj.Key).name.toLowerCase();
+    return nomeBase.includes(termoBuscado);
+  });
+
+  if (encontrados.length > 0) {
+    log.success(`Encontrados ${encontrados.length} arquivo(s) em ${prefixo}`);
+    return encontrados;
+  }
+
   return null;
 }
 
 export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger) {
+  const cacheKey = `s3:${pasta}:${nomeProtocolo}`;
+  const cached = await cacheGet(cacheKey);
+  if (cached) {
+    log.info('Cache hit S3');
+    return cached;
+  }
+
   const [ano, mes, dia] = pasta.split('/');
 
   const prefixes = generatePrefixes(ano, mes, dia);
@@ -120,6 +150,8 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
       nomeParaDownload,
     };
   });
+
+  await cacheSet(cacheKey, resultados, 600);
 
   log.section('Busca S3 finalizada');
   return resultados;

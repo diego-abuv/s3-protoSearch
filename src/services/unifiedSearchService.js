@@ -4,8 +4,16 @@ import { findFileAndGetSignedUrl as findLocally } from './localSearchService.js'
 import { translateError } from '../utils/errorCodes.js';
 import { logger } from '../utils/logger.js';
 import { queryIndex } from '../db/indexDb.js';
+import { cacheGet, cacheSet } from '../utils/cache.js';
 
 export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger) {
+  const cacheKey = `busca:${pasta}:${nomeProtocolo}`;
+  const cached = await cacheGet(cacheKey);
+  if (cached) {
+    log.info('Cache hit busca unificada');
+    return cached;
+  }
+
   const inicio = Date.now();
 
   log.section('INICIANDO BUSCA UNIFICADA');
@@ -21,7 +29,9 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
     if (s3Result) {
       log.success('Arquivo(os) encontrado(os) no S3.');
       log.section(`BUSCA FINALIZADA (${((Date.now() - inicio) / 1000).toFixed(2)}s)`);
-      return { arquivos: s3Result, status: { s3: 'ok', local: localStatus } };
+      const s3ResultObj = { arquivos: s3Result, status: { s3: 'ok', local: localStatus } };
+      await cacheSet(cacheKey, s3ResultObj, 300);
+      return s3ResultObj;
     }
     log.info('S3: Nenhum arquivo encontrado.');
     s3Status = 'nao_encontrado';
@@ -46,7 +56,9 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
         nomeParaDownload: path.basename(r.file_name),
       }));
       log.section(`BUSCA FINALIZADA (${((Date.now() - inicio) / 1000).toFixed(2)}s)`);
-      return { arquivos, status: { s3: s3Status, local: 'indexado' } };
+      const idxResult = { arquivos, status: { s3: s3Status, local: 'indexado' } };
+      await cacheSet(cacheKey, idxResult, 300);
+      return idxResult;
     }
     log.info('Índice local: Nenhum arquivo encontrado.');
   } catch (idxErr) {
@@ -65,7 +77,9 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
         nomeParaDownload: path.basename(r.file_name),
       }));
       log.section(`BUSCA FINALIZADA (${((Date.now() - inicio) / 1000).toFixed(2)}s)`);
-      return { arquivos, status: { s3: s3Status, local: 'indexado' } };
+      const likeResult = { arquivos, status: { s3: s3Status, local: 'indexado' } };
+      await cacheSet(cacheKey, likeResult, 300);
+      return likeResult;
     }
     log.info('Índice local: Nenhum arquivo encontrado por substring.');
   } catch (likeErr) {
@@ -80,7 +94,9 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
       if (localResult.length > 0) {
         log.success(`Arquivo(os) encontrado(os) localmente (${localResult.length}).`);
         log.section(`BUSCA FINALIZADA (${((Date.now() - inicio) / 1000).toFixed(2)}s)`);
-        return { arquivos: localResult, status: { s3: s3Status, local: 'ok' } };
+        const localResultObj = { arquivos: localResult, status: { s3: s3Status, local: 'ok' } };
+        await cacheSet(cacheKey, localResultObj, 300);
+        return localResultObj;
       }
       log.info('Local: Nenhum arquivo encontrado.');
       localStatus = 'nao_encontrado';
@@ -96,5 +112,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
   const duracao = ((Date.now() - inicio) / 1000).toFixed(2);
   log.destaque(`FALHA: Arquivo não encontrado em nenhuma fonte.`);
   log.section(`BUSCA FINALIZADA (${duracao}s)`);
-  return { arquivos: null, status: { s3: s3Status, local: localStatus } };
+  const nullResult = { arquivos: null, status: { s3: s3Status, local: localStatus } };
+  await cacheSet(cacheKey, nullResult, 300);
+  return nullResult;
 }

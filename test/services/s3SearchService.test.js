@@ -1,11 +1,22 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 
+vi.hoisted(() => {
+  process.env.REDIS_URL = 'redis://localhost:6379';
+});
+
+vi.mock('../../src/utils/cache.js', () => ({
+  cacheGet: vi.fn(),
+  cacheSet: vi.fn(),
+  cacheDel: vi.fn(),
+}));
+
 vi.mock('@aws-sdk/client-s3', () => ({
   S3Client: vi.fn(),
   ListObjectsV2Command: vi.fn(),
 }));
 
 import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
+import { cacheGet, cacheSet } from '../../src/utils/cache.js';
 
 const mockSend = vi.fn();
 S3Client.mockImplementation(function () {
@@ -62,6 +73,8 @@ describe('findFileAndGetSignedUrl', () => {
   beforeEach(() => {
     mockSend.mockReset();
     ListObjectsV2Command.mockClear();
+    cacheGet.mockReset();
+    cacheSet.mockReset();
   });
 
   it('retorna array com downloadUrl quando S3 encontra arquivo em 1 prefixo', async () => {
@@ -116,5 +129,35 @@ describe('findFileAndGetSignedUrl', () => {
 
     expect(result).toHaveLength(1);
     expect(result[0].nomeParaDownload).toBe('a.mp3');
+  });
+
+  it('usa cache quando disponivel e nao chama S3', async () => {
+    const cachedResult = [{ downloadUrl: '/download-s3?key=cached.mp3', nomeParaDownload: 'cached.mp3' }];
+    cacheGet.mockResolvedValue(cachedResult);
+
+    const result = await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
+
+    expect(result).toEqual(cachedResult);
+    expect(mockSend).not.toHaveBeenCalled();
+    expect(cacheGet).toHaveBeenCalled();
+  });
+
+  it('consulta S3 e popula cache quando cache miss', async () => {
+    cacheGet.mockResolvedValue(null);
+    mockSend.mockImplementation((command) => {
+      const prefix = command.input.Prefix;
+      if (prefix === '2024/01/02/') {
+        return Promise.resolve({
+          Contents: [{ Key: '2024/01/02/arquivo.mp3' }],
+        });
+      }
+      return Promise.resolve({ Contents: [] });
+    });
+
+    const result = await findFileAndGetSignedUrl('2024/01/02', 'arquivo');
+
+    expect(result).toHaveLength(1);
+    expect(mockSend).toHaveBeenCalled();
+    expect(cacheSet).toHaveBeenCalled();
   });
 });

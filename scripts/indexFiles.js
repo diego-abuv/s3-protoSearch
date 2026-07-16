@@ -31,9 +31,9 @@ function getPathConfigs() {
     const { configString, years } = pathKeys[serverId];
     const [basePath, subRootsString] = configString.split(',');
     if (subRootsString) {
-      const searchRoots = subRootsString.split(';').map((p) =>
-        path.join(basePath.trim(), p.trim()).replace(/\\/g, '/'),
-      );
+      const searchRoots = subRootsString
+        .split(';')
+        .map((p) => path.join(basePath.trim(), p.trim()).replace(/\\/g, '/'));
       configs.push({ basePath: basePath.trim().replace(/\\/g, '/'), searchRoots, years });
     } else {
       const searchRoots = basePath.split(';').map((p) => p.trim().replace(/\\/g, '/'));
@@ -56,12 +56,9 @@ function saveDb(db) {
 }
 
 async function indexPathWithFind(rootPath, searchRoot, db) {
-  const find = spawn('find', [
-    rootPath,
-    '-maxdepth', '4',
-    '-type', 'f',
-    '-printf', '%P\n',
-  ], { stdio: ['ignore', 'pipe', 'inherit'] });
+  const find = spawn('find', [rootPath, '-maxdepth', '4', '-type', 'f', '-printf', '%P\n'], {
+    stdio: ['ignore', 'pipe', 'inherit'],
+  });
 
   const rl = readline.createInterface({ input: find.stdout, crlfDelay: Infinity });
   let count = 0;
