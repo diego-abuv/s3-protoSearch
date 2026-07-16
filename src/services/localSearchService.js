@@ -4,6 +4,9 @@ import path from 'path';
 import { logger } from '../utils/logger.js';
 import { runIndex, saveIndex, isDirScanned, markDirScanned } from '../db/indexDb.js';
 
+const REaddir_TIMEOUT_MS = 10_000;
+const RACE_TIMEOUT_MS = 30_000;
+
 function getPathConfigsForYear(anoBusca) {
   const configs = [];
   const anoBuscaStr = anoBusca.toString();
@@ -48,7 +51,9 @@ async function findFiles(dirPath, targetName, signal, maxDepth, searchRoot) {
       let items = null;
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
-          items = await fs.readdir(currentDir, { withFileTypes: true });
+          const readdirSignal = AbortSignal.timeout(REaddir_TIMEOUT_MS);
+          const combinedSignal = signal ? AbortSignal.any([signal, readdirSignal]) : readdirSignal;
+          items = await fs.readdir(currentDir, { withFileTypes: true, signal: combinedSignal });
           if (items && items.length > 0) break;
         } catch {
           //
@@ -99,28 +104,47 @@ async function findFiles(dirPath, targetName, signal, maxDepth, searchRoot) {
 
 const LOCAL_SEARCH_EXTENSIONS = ['.mp3', '.wav', '.mp4', '.pdf', '.ogg', '.wma', '.avi', '.txt'];
 
-function raceToFirstResult(promises) {
+function raceToFirstResult(promises, timeoutMs = RACE_TIMEOUT_MS) {
   return new Promise((resolve) => {
     let settled = false;
+
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve(null);
+      }
+    }, timeoutMs);
+
     for (const p of promises) {
       p.then((result) => {
         if (settled) return;
         if (result) {
           settled = true;
+          clearTimeout(timer);
           resolve(result);
         }
       }).catch(() => {});
     }
+
     Promise.allSettled(promises).then(() => {
-      if (!settled) resolve(null);
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        resolve(null);
+      }
     });
   });
 }
 
-export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger) {
+export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger, externalSignal) {
   log.section('Início da requisição de busca local');
   log.info(`- Data do Protocolo (pasta): ${pasta}`);
   log.info(`- Nome do Arquivo (nomeProtocolo): ${nomeProtocolo}`);
+
+  if (externalSignal?.aborted) {
+    log.warn('Busca local abortada (timeout externo).');
+    return null;
+  }
 
   const [ano, mes, dia] = pasta.split('/');
   const anoBusca = parseInt(ano, 10);
@@ -136,6 +160,11 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
 
   for (const pathConfig of pathConfigs) {
     for (const searchRoot of pathConfig.searchRoots) {
+      if (externalSignal?.aborted) {
+        log.warn('Busca local abortada (timeout externo).');
+        return null;
+      }
+
       try {
         await fs.access(searchRoot);
       } catch {
@@ -159,8 +188,10 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
       log.info(`Buscando em: ${searchRoot}`);
       const t0 = performance.now();
 
-      const abortController = new AbortController();
-      const { signal } = abortController;
+      const localAbort = new AbortController();
+      const signals = [localAbort.signal];
+      if (externalSignal) signals.push(externalSignal);
+      const signal = AbortSignal.any(signals);
 
       const promessas = prefixosUnicos.map(async (prefixo) => {
         const fullPath = path.join(searchRoot, prefixo);
@@ -183,7 +214,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
             await fs.access(directPath);
             log.success(`   [DIRECT] Arquivo encontrado via acesso direto: ${directPath}`);
 
-            abortController.abort();
+            localAbort.abort();
             const relativePath = path.relative(relativeBasePath, directPath);
             const pathKey = relativePath.replace(/\\/g, '/');
             const nomeParaDownload = path.basename(pathKey);

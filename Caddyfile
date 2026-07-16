@@ -2,7 +2,11 @@ seu-dominio-aqui.com.br, localhost {
     tls internal # remover em produção
 
     handle {
-        reverse_proxy s3-protosearch:80
+        reverse_proxy s3-protosearch:80 {
+            transport http {
+                read_timeout 120s
+            }
+        }
         header {
             -Via
         }
