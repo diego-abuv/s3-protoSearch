@@ -171,6 +171,44 @@ describe('Auth Routes', () => {
       expect(cookies).toBeDefined();
       expect(cookies.some((c) => c.startsWith('refresh_token='))).toBe(true);
     });
+
+    it('retorna 403 quando usuario esta bloqueado', async () => {
+      sqlite.get.mockReturnValue({
+        id: 3,
+        username: 'blockeduser',
+        password_hash: 'hashed:pass',
+        role: 'user',
+        blocked: 1,
+      });
+      const res = await request(app).post('/login').send({ username: 'blockeduser', password: 'pass' });
+      expect(res.status).toBe(403);
+      expect(res.body.error).toContain('bloqueada');
+    });
+
+    it('retorna 200 quando usuario nao esta bloqueado', async () => {
+      sqlite.get.mockReturnValue({
+        id: 4,
+        username: 'activeuser',
+        password_hash: 'hashed:pass',
+        role: 'user',
+        blocked: 0,
+      });
+      const res = await request(app).post('/login').send({ username: 'activeuser', password: 'pass' });
+      expect(res.status).toBe(200);
+      expect(res.body.access_token).toBeDefined();
+    });
+
+    it('retorna 200 quando campo blocked eh null (legado)', async () => {
+      sqlite.get.mockReturnValue({
+        id: 5,
+        username: 'legacyuser',
+        password_hash: 'hashed:pass',
+        role: 'user',
+        blocked: null,
+      });
+      const res = await request(app).post('/login').send({ username: 'legacyuser', password: 'pass' });
+      expect(res.status).toBe(200);
+    });
   });
 
   describe('POST /refresh', () => {

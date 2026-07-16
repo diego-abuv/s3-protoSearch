@@ -734,4 +734,54 @@ input[type="date"].is-invalid {
   color: inherit;
 }
 
+/* ==============================
+   Admin — Status badges
+   ============================== */
+
+.badge-online {
+  color: #198754;
+  border: 1px solid #198754;
+  background: rgba(25, 135, 84, 0.12);
+  font-size: 0.7rem;
+}
+
+.badge-blocked {
+  color: #dc3545;
+  border: 1px solid #dc3545;
+  background: rgba(220, 53, 69, 0.12);
+  font-size: 0.7rem;
+}
+
+/* ==============================
+   Download Animation
+   ============================== */
+
+.download-arrow {
+  position: fixed;
+  z-index: 10000;
+  font-size: 1.5rem;
+  color: var(--gradient-start);
+  text-shadow: 0 0 8px var(--glow-1);
+  pointer-events: none;
+  animation: climbUp 0.8s ease-out forwards;
+}
+
+@keyframes climbUp {
+  0% { transform: translateY(0) scale(1); opacity: 1; }
+  70% { opacity: 1; }
+  100% { transform: translateY(-200px) scale(0.5); opacity: 0; }
+}
+
+/* ==============================
+   Toast overrides
+   ============================== */
+
+.toast {
+  background: var(--glass-bg) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--glass-border) !important;
+  color: inherit !important;
+}
+
 

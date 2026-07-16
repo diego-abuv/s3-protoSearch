@@ -18,13 +18,16 @@ export function createAdminRoutes() {
   router.use(adminLimiter);
 
   router.get('/admin/users', authMiddleware, adminMiddleware, (req, res) => {
-    // Lógica para listar usuários
-    const users = all('SELECT id, username, role FROM users');
+    const users = all(`
+      SELECT u.id, u.username, u.role, u.blocked,
+        (SELECT MAX(created_at) FROM audit_log WHERE user_id = u.id AND action = 'login') as last_login,
+        (SELECT COUNT(*) FROM refresh_tokens WHERE user_id = u.id AND revoked = 0 AND expires_at > datetime('now')) > 0 as is_online
+      FROM users u
+    `);
     res.json({ message: 'Lista de usuários', users });
   });
 
   router.post('/admin/users', authMiddleware, adminMiddleware, (req, res) => {
-    // Lógica para criar um novo usuário
     let { username, password, role } = req.body;
     username = sanitizeInput(username);
     password = sanitizeInput(password);
@@ -106,7 +109,6 @@ export function createAdminRoutes() {
   });
 
   router.delete('/admin/users/:id', authMiddleware, adminMiddleware, (req, res) => {
-    // Lógica para deletar um usuário
     const user = get('SELECT * FROM users WHERE id = ?', [req.params.id]);
     if (!user) {
       return res.status(404).json({ error: 'Usuário não encontrado' });
@@ -126,27 +128,167 @@ export function createAdminRoutes() {
     res.status(200).json({ message: 'Usuário excluído com sucesso' });
   });
 
+  router.patch('/admin/users/:id/block', authMiddleware, adminMiddleware, (req, res) => {
+    const user = get('SELECT id, username, blocked FROM users WHERE id = ?', [req.params.id]);
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    const newBlocked = user.blocked ? 0 : 1;
+    run('UPDATE users SET blocked = ? WHERE id = ?', [newBlocked, String(req.params.id)]);
+
+    if (newBlocked === 1) {
+      run('DELETE FROM refresh_tokens WHERE user_id = ?', [String(req.params.id)]);
+    }
+
+    save();
+
+    logAudit({
+      user_id: req.user.id,
+      username: req.user.username,
+      action: newBlocked ? 'admin_block_user' : 'admin_unblock_user',
+      target: user.username,
+      details: `blocked=${newBlocked}`,
+      ip: req.ip,
+    });
+
+    res.json({ message: newBlocked ? 'Usuário bloqueado' : 'Usuário desbloqueado' });
+  });
+
+  router.post('/admin/users/:id/force-logout', authMiddleware, adminMiddleware, (req, res) => {
+    const user = get('SELECT id, username FROM users WHERE id = ?', [req.params.id]);
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    run('DELETE FROM refresh_tokens WHERE user_id = ?', [String(req.params.id)]);
+    save();
+
+    logAudit({
+      user_id: req.user.id,
+      username: req.user.username,
+      action: 'admin_force_logout',
+      target: user.username,
+      ip: req.ip,
+    });
+
+    res.json({ message: 'Sessões revogadas com sucesso' });
+  });
+
+  router.post('/admin/users/:id/reset-password', authMiddleware, adminMiddleware, (req, res) => {
+    const user = get('SELECT id, username FROM users WHERE id = ?', [req.params.id]);
+    if (!user) return res.status(404).json({ error: 'Usuário não encontrado' });
+
+    const { password } = req.body;
+    if (!password) {
+      return res.status(400).json({ error: 'password é obrigatório' });
+    }
+
+    const passwordError = validatePassword(password);
+    if (passwordError) return res.status(400).json({ error: passwordError });
+
+    const password_hash = bcrypt.hashSync(password, 10);
+    run('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash, String(req.params.id)]);
+    save();
+
+    logAudit({
+      user_id: req.user.id,
+      username: req.user.username,
+      action: 'admin_reset_password',
+      target: user.username,
+      ip: req.ip,
+    });
+
+    res.json({ message: 'Senha redefinida com sucesso' });
+  });
+
   router.get('/admin/audit', authMiddleware, adminMiddleware, (req, res) => {
-    // Lógica para listar logs de auditoria
     const limit = Math.min(parseInt(req.query.limit) || 50, 200);
     const offset = parseInt(req.query.offset) || 0;
-    const logs = all('SELECT * FROM audit_log ORDER BY created_at DESC LIMIT ? OFFSET ?', [limit, offset]);
-    const total = get('SELECT COUNT(*) as total FROM audit_log');
+
+    let whereClause = '';
+    const params = [];
+
+    if (req.query.user) {
+      whereClause += ' AND username = ?';
+      params.push(req.query.user);
+    }
+    if (req.query.action) {
+      whereClause += ' AND action = ?';
+      params.push(req.query.action);
+    }
+    if (req.query.from) {
+      whereClause += ' AND created_at >= ?';
+      params.push(req.query.from);
+    }
+    if (req.query.to) {
+      whereClause += ' AND created_at <= ?';
+      params.push(req.query.to);
+    }
+
+    const logs = all(`SELECT * FROM audit_log WHERE 1=1 ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [
+      ...params,
+      limit,
+      offset,
+    ]);
+    const total = get(`SELECT COUNT(*) as total FROM audit_log WHERE 1=1 ${whereClause}`, params);
     res.json({ logs, total: total.total, limit, offset });
   });
 
+  router.get('/admin/audit/export', authMiddleware, adminMiddleware, (req, res) => {
+    let whereClause = '';
+    const params = [];
+
+    if (req.query.user) {
+      whereClause += ' AND username = ?';
+      params.push(req.query.user);
+    }
+    if (req.query.action) {
+      whereClause += ' AND action = ?';
+      params.push(req.query.action);
+    }
+    if (req.query.from) {
+      whereClause += ' AND created_at >= ?';
+      params.push(req.query.from);
+    }
+    if (req.query.to) {
+      whereClause += ' AND created_at <= ?';
+      params.push(req.query.to);
+    }
+
+    const logs = all(`SELECT * FROM audit_log WHERE 1=1 ${whereClause} ORDER BY created_at DESC LIMIT 10000`, params);
+
+    const header = 'id,user_id,username,action,target,details,ip,created_at';
+    const rows = logs.map((l) =>
+      [l.id, l.user_id, l.username, l.action, l.target, l.details, l.ip, l.created_at]
+        .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`)
+        .join(','),
+    );
+
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="audit_log.csv"');
+    res.send(header + '\n' + rows.join('\n'));
+  });
+
   router.get('/admin/stats', authMiddleware, adminMiddleware, (req, res) => {
-    // Lógica para obter estatísticas do sistema
     const userCount = get('SELECT COUNT(*) as total FROM users');
     const logCount = get('SELECT COUNT(*) as total FROM audit_log');
-    const activeTokens = get(
-      'SELECT COUNT(*) as total FROM refresh_tokens WHERE revoked = 0 AND expires_at > datetime("now")',
+    const searchesToday = get(
+      "SELECT COUNT(*) as total FROM audit_log WHERE action = 'search' AND date(created_at) = date('now')",
     );
+    const activeUsers = get(
+      'SELECT COUNT(DISTINCT user_id) as total FROM refresh_tokens WHERE revoked = 0 AND expires_at > datetime("now")',
+    );
+
     res.json({
       users: userCount.total,
       audit_logs: logCount.total,
-      active_sessions: activeTokens.total,
+      searches_today: searchesToday.total,
+      active_users: activeUsers.total,
     });
+  });
+
+  router.get('/admin/stats/chart', authMiddleware, adminMiddleware, (req, res) => {
+    const data = all(
+      "SELECT date(created_at) as day, COUNT(*) as total FROM audit_log WHERE action = 'search' AND created_at > datetime('now', '-7 days') GROUP BY day ORDER BY day",
+    );
+    res.json({ data });
   });
 
   return router;

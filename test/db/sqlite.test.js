@@ -41,6 +41,7 @@ describe('com initDatabase', () => {
       username: 'test',
       password_hash: 'hash',
       role: 'user',
+      blocked: 0,
       created_at: expect.any(String),
     });
   });

@@ -7,6 +7,23 @@ const DB_PATH = '/db/index.db';
 let db;
 let ready = false;
 
+function createSchema(database) {
+  database.run(`CREATE TABLE IF NOT EXISTS file_index (
+    protocol_number TEXT NOT NULL,
+    file_path TEXT NOT NULL UNIQUE,
+    file_name TEXT NOT NULL,
+    search_root TEXT NOT NULL,
+    indexed_at TEXT DEFAULT (datetime('now'))
+  )`);
+  database.run('CREATE INDEX IF NOT EXISTS idx_protocol_number ON file_index(protocol_number)');
+  database.run(`CREATE TABLE IF NOT EXISTS scanned_dirs (
+    search_root TEXT NOT NULL,
+    dir_path TEXT NOT NULL,
+    indexed_at TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (search_root, dir_path)
+  )`);
+}
+
 export async function initIndexDb() {
   const SQL = await initSqlJs();
 
@@ -15,30 +32,21 @@ export async function initIndexDb() {
       const buffer = fs.readFileSync(DB_PATH);
       db = new SQL.Database(buffer);
       db.export();
+      createSchema(db);
     } catch {
       console.error('[DB] index.db corrompido, recriando...');
-      fs.unlinkSync(DB_PATH);
+      try {
+        fs.unlinkSync(DB_PATH);
+      } catch {
+        // arquivo já removido
+      }
       db = new SQL.Database();
+      createSchema(db);
     }
   } else {
     db = new SQL.Database();
+    createSchema(db);
   }
-
-  db.run(`CREATE TABLE IF NOT EXISTS file_index (
-    protocol_number TEXT NOT NULL,
-    file_path TEXT NOT NULL UNIQUE,
-    file_name TEXT NOT NULL,
-    search_root TEXT NOT NULL,
-    indexed_at TEXT DEFAULT (datetime('now'))
-  )`);
-  db.run('CREATE INDEX IF NOT EXISTS idx_protocol_number ON file_index(protocol_number)');
-
-  db.run(`CREATE TABLE IF NOT EXISTS scanned_dirs (
-    search_root TEXT NOT NULL,
-    dir_path TEXT NOT NULL,
-    indexed_at TEXT DEFAULT (datetime('now')),
-    PRIMARY KEY (search_root, dir_path)
-  )`);
 
   ready = true;
   return db;
@@ -82,6 +90,17 @@ export function markDirScanned(searchRoot, dirPath) {
      VALUES (?, ?, datetime('now'))`,
     [searchRoot, dirPath],
   );
+}
+
+export function deleteIndex() {
+  if (!db) return;
+  try {
+    db.run('DELETE FROM file_index');
+    db.run('DELETE FROM scanned_dirs');
+    saveIndex();
+  } catch (err) {
+    console.error('[DB] Falha ao limpar index.db:', err.message);
+  }
 }
 
 export function saveIndex() {

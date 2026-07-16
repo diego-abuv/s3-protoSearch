@@ -98,6 +98,10 @@ export function createAuthRoutes() {
       return res.status(401).json({ error: 'credenciais inválidas' });
     }
 
+    if (user.blocked) {
+      return res.status(403).json({ error: 'Conta bloqueada. Contate o administrador.' });
+    }
+
     run('UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ? AND revoked = 0', [user.id]);
     save();
 

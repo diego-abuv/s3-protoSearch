@@ -234,16 +234,18 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
 
       const resultado = await raceToFirstResult(promessas);
 
-      // Garante que todas as variantes existentes foram marcadas como escaneadas
-      for (const prefixo of prefixosUnicos) {
-        const fullPath = path.join(searchRoot, prefixo);
-        try {
-          await fs.stat(fullPath);
-          if (!isDirScanned(searchRoot, prefixo)) {
-            markDirScanned(searchRoot, prefixo);
+      // Só marca como escaneado se encontrou arquivos — evita bloquear retry por 24h
+      if (resultado) {
+        for (const prefixo of prefixosUnicos) {
+          const fullPath = path.join(searchRoot, prefixo);
+          try {
+            await fs.stat(fullPath);
+            if (!isDirScanned(searchRoot, prefixo)) {
+              markDirScanned(searchRoot, prefixo);
+            }
+          } catch {
+            /* Diretório não existe, ignora */
           }
-        } catch {
-          /* Diretório não existe, ignora */
         }
       }
 

@@ -11,7 +11,15 @@ vi.mock('fs', () => {
   return { ...mockFs, default: mockFs };
 });
 
-import { initIndexDb, queryIndex, runIndex, isDirScanned, markDirScanned, saveIndex } from '../../src/db/indexDb.js';
+import {
+  initIndexDb,
+  queryIndex,
+  runIndex,
+  isDirScanned,
+  markDirScanned,
+  saveIndex,
+  deleteIndex,
+} from '../../src/db/indexDb.js';
 
 describe('sem initIndexDb', () => {
   it('isDirScanned() retorna false sem init', () => {
@@ -86,5 +94,20 @@ describe('com initIndexDb', () => {
   it('isDirScanned() respeita maxAgeHours customizado', () => {
     markDirScanned('/root', 'recent-dir');
     expect(isDirScanned('/root', 'recent-dir', 48)).toBe(true);
+  });
+
+  it('deleteIndex() limpa file_index e scanned_dirs', () => {
+    runIndex('INSERT INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)', [
+      '789',
+      '/path/to/file.wav',
+      'file.wav',
+      '/sharepoint/test',
+    ]);
+    markDirScanned('/root', '2024/1/1');
+
+    deleteIndex();
+
+    expect(queryIndex('SELECT * FROM file_index')).toEqual([]);
+    expect(isDirScanned('/root', '2024/1/1')).toBe(false);
   });
 });

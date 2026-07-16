@@ -46,10 +46,21 @@ export async function initDatabase() {
     FOREIGN KEY (user_id) REFERENCES users(id)
   )`);
 
-  const [cols] = db.exec('PRAGMA table_info(refresh_tokens)');
-  if (!cols?.values?.some((r) => r[1] === 'created_at')) {
+  const [refreshCols] = db.exec('PRAGMA table_info(refresh_tokens)');
+  if (!refreshCols?.values?.some((r) => r[1] === 'created_at')) {
     db.run('ALTER TABLE refresh_tokens ADD COLUMN created_at TEXT');
   }
+
+  const [userCols] = db.exec('PRAGMA table_info(users)');
+  if (!userCols?.values?.some((r) => r[1] === 'blocked')) {
+    db.run('ALTER TABLE users ADD COLUMN blocked INTEGER DEFAULT 0');
+  }
+
+  db.run('CREATE INDEX IF NOT EXISTS idx_audit_created_at ON audit_log(created_at)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_audit_user_id ON audit_log(user_id)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_audit_action ON audit_log(action)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id)');
+
   db.run("DELETE FROM refresh_tokens WHERE expires_at < datetime('now')");
   db.run("DELETE FROM audit_log WHERE created_at < datetime('now', '-90 days')");
 

@@ -7,6 +7,7 @@
   <title>S3 ProtoSearch — Admin</title>
   <link rel="stylesheet" href="/vendor/bootstrap.min.css">
   <link rel="stylesheet" href="/style.css">
+  <script src="/vendor/chart.min.js"></script>
 </head>
 <body>
 
@@ -37,23 +38,39 @@
     <section class="mb-4">
       <h2 class="fs-5 fw-bold gradient-text mb-3">Painel Admin</h2>
       <div class="row g-3" id="statsContainer">
-        <div class="col-md-4">
+        <div class="col-6 col-md-4 col-lg-2">
           <div class="card glass-card border-0 text-center p-3">
             <div class="text-secondary small">Usuarios</div>
             <div class="fs-3 fw-bold gradient-text" id="statUsers">-</div>
           </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-6 col-md-4 col-lg-2">
           <div class="card glass-card border-0 text-center p-3">
-            <div class="text-secondary small">Logs de auditoria</div>
+            <div class="text-secondary small">Logs</div>
             <div class="fs-3 fw-bold gradient-text" id="statLogs">-</div>
           </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-6 col-md-4 col-lg-2">
           <div class="card glass-card border-0 text-center p-3">
-            <div class="text-secondary small">Sessoes ativas</div>
-            <div class="fs-3 fw-bold gradient-text" id="statSessions">-</div>
+            <div class="text-secondary small">Buscas Hoje</div>
+            <div class="fs-3 fw-bold gradient-text" id="statSearches">-</div>
           </div>
+        </div>
+        <div class="col-6 col-md-4 col-lg-2">
+          <div class="card glass-card border-0 text-center p-3">
+            <div class="text-secondary small">Usuarios Ativos</div>
+            <div class="fs-3 fw-bold gradient-text" id="statActiveUsers">-</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Grafico de Buscas -->
+    <section class="mb-4">
+      <div class="card glass-card border-0 p-3">
+        <h3 class="fs-6 fw-bold gradient-text mb-3">Buscas — Ultimos 7 dias</h3>
+        <div style="height: 220px;">
+          <canvas id="searchChart"></canvas>
         </div>
       </div>
     </section>
@@ -105,11 +122,13 @@
                   <th>ID</th>
                   <th>Username</th>
                   <th>Role</th>
+                  <th>Status</th>
+                  <th>Ultimo Login</th>
                   <th class="text-end">Acoes</th>
                 </tr>
               </thead>
               <tbody id="usersTableBody">
-                <tr><td colspan="4" class="text-center text-secondary py-3">Carregando...</td></tr>
+                <tr><td colspan="6" class="text-center text-secondary py-3">Carregando...</td></tr>
               </tbody>
             </table>
           </div>
@@ -120,6 +139,51 @@
     <!-- Auditoria -->
     <section class="mb-4">
       <h2 class="fs-5 fw-bold gradient-text mb-3">Auditoria</h2>
+
+      <!-- Filtros -->
+      <div class="card glass-card border-0 mb-3">
+        <div class="card-body p-3">
+          <div class="row g-2 align-items-end">
+            <div class="col-6 col-md-2">
+              <label class="form-label small">De</label>
+              <input type="date" class="form-control form-control-sm glass-input" id="auditFilterFrom">
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label small">Ate</label>
+              <input type="date" class="form-control form-control-sm glass-input" id="auditFilterTo">
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label small">Usuario</label>
+              <select class="form-select form-select-sm glass-input" id="auditFilterUser">
+                <option value="">Todos</option>
+              </select>
+            </div>
+            <div class="col-6 col-md-2">
+              <label class="form-label small">Acao</label>
+              <select class="form-select form-select-sm glass-input" id="auditFilterAction">
+                <option value="">Todas</option>
+                <option value="login">Login</option>
+                <option value="logout">Logout</option>
+                <option value="search">Busca</option>
+                <option value="admin_create_user">Criar usuario</option>
+                <option value="admin_update_user">Atualizar usuario</option>
+                <option value="admin_delete_user">Excluir usuario</option>
+                <option value="admin_block_user">Bloquear usuario</option>
+                <option value="admin_unblock_user">Desbloquear usuario</option>
+                <option value="admin_force_logout">Forcar logout</option>
+                <option value="admin_reset_password">Reset senha</option>
+              </select>
+            </div>
+            <div class="col-6 col-md-2">
+              <button class="btn btn-sm btn-gradient w-100" id="btnFiltrarAudit">Buscar</button>
+            </div>
+            <div class="col-6 col-md-2">
+              <button class="btn btn-sm btn-outline-info w-100" id="btnExportCSV">Exportar CSV</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="card glass-card border-0">
         <div class="card-body p-0">
           <div class="table-responsive">
@@ -139,12 +203,15 @@
           </div>
         </div>
         <div class="card-footer border-0 text-center">
-          <button class="btn btn-sm btn-outline-secondary" id="btnCarregarMais">Carregar mais</button>
+          <button class="btn btn-sm btn-outline-secondary d-none" id="btnCarregarMais">Carregar mais</button>
         </div>
       </div>
     </section>
 
   </main>
+
+  <!-- Toast container -->
+  <div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer" style="z-index:9999;"></div>
 
   <!-- Modal editar usuario -->
   <div class="modal fade" id="modalEditar" tabindex="-1">
@@ -168,7 +235,7 @@
             </select>
           </div>
           <div class="mb-3">
-            <label class="form-label small">Senha (deixe em branco para não alterar)</label>
+            <label class="form-label small">Senha (deixe em branco para nao alterar)</label>
             <input type="password" class="form-control form-control-sm glass-input" id="editPassword">
           </div>
           <div id="editUserError" class="text-danger small d-none"></div>
@@ -176,6 +243,27 @@
         <div class="modal-footer border-0">
           <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
           <button type="button" class="btn btn-sm btn-gradient" id="btnSalvarEdicao">Salvar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal forcar logout -->
+  <div class="modal fade" id="modalForceLogout" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+      <div class="modal-content glass-card border-0">
+        <div class="modal-header border-0">
+          <h5 class="modal-title text-warning">Forcar logout</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-secondary">Revogar todas as sessoes de <strong id="forceLogoutUserName"></strong>?</p>
+          <input type="hidden" id="forceLogoutUserId">
+          <div id="forceLogoutError" class="text-danger small d-none"></div>
+        </div>
+        <div class="modal-footer border-0">
+          <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="button" class="btn btn-sm btn-warning" id="btnConfirmarForceLogout">Confirmar</button>
         </div>
       </div>
     </div>
