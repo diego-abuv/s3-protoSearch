@@ -4,9 +4,6 @@ import path from 'path';
 import { logger } from '../utils/logger.js';
 import { runIndex, saveIndex, isDirScanned, markDirScanned } from '../db/indexDb.js';
 
-const REaddir_TIMEOUT_MS = 10_000;
-const RACE_TIMEOUT_MS = 30_000;
-
 function getPathConfigsForYear(anoBusca) {
   const configs = [];
   const anoBuscaStr = anoBusca.toString();
@@ -49,16 +46,14 @@ async function findFiles(dirPath, targetName, signal, maxDepth, searchRoot) {
 
       const [currentDir, depth] = stack.pop();
       let items = null;
-      for (let attempt = 0; attempt < 3; attempt++) {
+      for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const readdirSignal = AbortSignal.timeout(REaddir_TIMEOUT_MS);
-          const combinedSignal = signal ? AbortSignal.any([signal, readdirSignal]) : readdirSignal;
-          items = await fs.readdir(currentDir, { withFileTypes: true, signal: combinedSignal });
+          items = await fs.readdir(currentDir, { withFileTypes: true, signal });
           if (items && items.length > 0) break;
         } catch {
           //
         }
-        if (attempt < 2) {
+        if (attempt < 1) {
           await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
         }
       }
@@ -104,23 +99,15 @@ async function findFiles(dirPath, targetName, signal, maxDepth, searchRoot) {
 
 const LOCAL_SEARCH_EXTENSIONS = ['.mp3', '.wav', '.mp4', '.pdf', '.ogg', '.wma', '.avi', '.txt'];
 
-function raceToFirstResult(promises, timeoutMs = RACE_TIMEOUT_MS) {
+function raceToFirstResult(promises) {
   return new Promise((resolve) => {
     let settled = false;
-
-    const timer = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        resolve(null);
-      }
-    }, timeoutMs);
 
     for (const p of promises) {
       p.then((result) => {
         if (settled) return;
         if (result) {
           settled = true;
-          clearTimeout(timer);
           resolve(result);
         }
       }).catch(() => {});
@@ -129,11 +116,46 @@ function raceToFirstResult(promises, timeoutMs = RACE_TIMEOUT_MS) {
     Promise.allSettled(promises).then(() => {
       if (!settled) {
         settled = true;
-        clearTimeout(timer);
         resolve(null);
       }
     });
   });
+}
+
+async function quickReaddirSearch(dirPath, targetName, signal, maxDepth = 1) {
+  const results = [];
+  const stack = [[dirPath, 0]];
+
+  while (stack.length > 0) {
+    if (signal?.aborted || results.length > 0) break;
+    const [currentDir, depth] = stack.pop();
+
+    let items;
+    try {
+      items = await fs.readdir(currentDir, { withFileTypes: true, signal });
+    } catch {
+      continue;
+    }
+    if (!items || items.length === 0) continue;
+
+    for (const item of items) {
+      if (signal?.aborted || results.length > 0) break;
+      const fullPath = path.join(currentDir, item.name);
+
+      if (item.isDirectory()) {
+        if (depth < maxDepth) {
+          stack.push([fullPath, depth + 1]);
+        }
+      } else {
+        const nomeBase = path.parse(item.name).name.toLowerCase();
+        if (nomeBase.includes(targetName)) {
+          results.push(fullPath);
+        }
+      }
+    }
+  }
+
+  return results;
 }
 
 export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger, externalSignal) {
@@ -231,6 +253,33 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
             return [{ downloadUrl, nomeParaDownload }];
           } catch {
             /* arquivo não existe com essa extensão */
+          }
+        }
+
+        // Busca rápida por readdir (substring, 2 níveis)
+        if (!signal?.aborted) {
+          const tQuick = performance.now();
+          const quickResults = await quickReaddirSearch(fullPath, termoBuscado, signal);
+          log.info(
+            `   [TIMING] quickReaddir: ${(performance.now() - tQuick).toFixed(0)}ms (encontrados ${quickResults.length})`,
+          );
+
+          if (quickResults.length > 0) {
+            localAbort.abort();
+            return quickResults.map((fp) => {
+              const relativePath = path.relative(relativeBasePath, fp);
+              const pathKey = relativePath.replace(/\\/g, '/');
+              const nomeParaDownload = path.basename(pathKey);
+              const downloadUrl = `/download-local?file=${encodeURIComponent(fp)}`;
+              const protocolNumber = String(parseInt((path.parse(fp).name.match(/^\d+/) || ['0'])[0], 10));
+              runIndex(
+                `INSERT OR IGNORE INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)`,
+                [protocolNumber, fp, path.parse(fp).name, searchRoot],
+              );
+              log.success(`Arquivo encontrado via readdir! Chave: ${pathKey}`);
+              log.info(`Arquivo físico em: ${fp}`);
+              return { downloadUrl, nomeParaDownload };
+            });
           }
         }
 

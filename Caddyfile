@@ -4,7 +4,7 @@ buscaprotocolo.grupoadrianocobuccio.com.br, localhost {
     handle {
         reverse_proxy s3-protosearch:80 {
             transport http {
-                read_timeout 120s
+                read_timeout 600s
             }
         }
         header {

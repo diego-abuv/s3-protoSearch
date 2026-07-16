@@ -14,8 +14,6 @@ const s3Client = new S3Client({
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   },
   requestHandler: new NodeHttpHandler({
-    requestTimeout: 15_000,
-    connectionTimeout: 5_000,
     httpsAgent: new https.Agent({
       keepAlive: true,
       maxSockets: 25,
