@@ -1,4 +1,4 @@
-seu-dominio-aqui.com.br, localhost {
+buscaprotocolo.grupoadrianocobuccio.com.br, localhost {
     tls internal # remover em produção
 
     handle {

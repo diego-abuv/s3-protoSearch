@@ -51,11 +51,14 @@ async function startServer() {
   const publicProtocol = process.env.PUBLIC_PROTOCOL || 'http';
   const portSuffix = port == 80 || port == 443 ? '' : `:${port}`;
 
-  app.listen(port, host, () => {
+  const server = app.listen(port, host, () => {
     logger.info(
       `Servidor rodando em ${publicProtocol}://${host}:${port}, acessível em ${publicProtocol}://${publicHost}${portSuffix}`,
     );
   });
+
+  server.timeout = 120_000;
+  server.headersTimeout = 125_000;
 }
 
 startServer();
