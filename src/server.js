@@ -57,8 +57,8 @@ async function startServer() {
     );
   });
 
-  server.timeout = 600_000;
-  server.headersTimeout = 605_000;
+  server.timeout = 900_000;
+  server.headersTimeout = 905_000;
 }
 
 startServer();

@@ -38,7 +38,9 @@ Aplicação web containerizada para busca unificada de arquivos de áudio/docume
 ## Funcionalidades
 
 - **Busca unificada S3 → local**: Tenta o S3 primeiro; se falhar ou não encontrar, busca nos diretórios locais automaticamente.
-- **Pula varredura local se data já indexada**: Diretórios já varridos não são escaneados novamente, reduzindo o tempo de resposta.
+- **SSE streaming de progresso**: Backend emite eventos `progress`/`result` em tempo real via Server-Sent Events; frontend lê via `ReadableStream`.
+- **Streaming readdir (fast path)**: Usa `fs.opendir` + `dir.read()` em batches — encontra o arquivo sem carregar todos os entries do diretório (testado com 48K+ arquivos). Termina imediatamente ao encontrar match.
+- **Pula varredura local se data já indexada**: `isDirScanned` (TTL 1h) executa antes do readdir e do findFiles — evita ambas as fases se a data já foi varrida.
 - **URLs assinadas**: Links temporários de 1 hora sem expor credenciais AWS.
 - **Fallback resiliente**: Falha de rede no S3 não quebra o fluxo — o fallback local é executado mesmo com erro.
 - **Autenticação JWT**: Login com access token em memória + refresh token em cookie httpOnly (rotação a cada uso).
@@ -53,6 +55,8 @@ Aplicação web containerizada para busca unificada de arquivos de áudio/docume
 - **Múltiplas estruturas de diretório**: Suporte a subpastas via configuração no `.env`.
 - **Componentes sem CDN**: Bootstrap servido localmente, zero dependência externa no frontend.
 - **Cache Redis por prefixo S3**: Listagens S3 cacheadas por prefixo (TTL 300s), evitando chamadas repetidas ao bucket para arquivos na mesma data. Fallback silencioso se Redis indisponível.
+- **Dedup de buscas concorrentes**: Buscas idênticas aguardam a Promise existente em vez de duplicar requisições.
+- **Timeouts por fase**: Tempos separados para readdir rápido (240s) e findFiles (300s), com timeout global de 900s. Cada fase tem seu próprio AbortController.
 
 ---
 
@@ -84,16 +88,20 @@ graph TD
 
         subgraph "Busca"
             B["/buscar-arquivo<br/>authMiddleware + rate 30/min"]
-            B --> US["UnifiedSearchService"]
+            SSE["SSE Streaming<br/>progress + result"]
+            B --> SSE
+            SSE --> US["UnifiedSearchService"]
             US --> REDIS["Redis<br/>cache por prefixo + termo"]
             REDIS -->|hit| RJSON["Resposta JSON"]
             REDIS -->|miss| S3["S3 ListObjectsV2"]
             S3 -->|cacheia listing| REDIS
             S3 -->|falha / não encontrou| IDX["Índice Local SQLite"]
             IDX -->|encontrou| RJSON["Resposta JSON"]
-            IDX -->|não encontrou| DATA_CHECK["Data já indexada?"]
-            DATA_CHECK -->|sim| RJSON
-            DATA_CHECK -->|não| LOCAL["Varre dir. local + index on-the-fly"]
+            IDX -->|não encontrou| DATA_CHECK["isDirScanned?<br/>(TTL 1h)"]
+            DATA_CHECK -->|já varrido| RJSON
+            DATA_CHECK -->|não varrido| READDIR["readdir streaming<br/>fs.opendir + dir.read()"]
+            READDIR -->|encontrou| RJSON
+            READDIR -->|não encontrou| LOCAL["findFiles<br/>index on-the-fly"]
             S3 -->|URL assinada 1h| RJSON["Resposta JSON"]
             LOCAL -->|/download-local| RJSON
         end
@@ -143,6 +151,7 @@ graph TD
 | Docker + docker-compose | Containerização |
 | Caddy 2 | Reverse proxy, TLS interno (self-signed), redirect HTTP→HTTPS |
 | Redis 7 + ioredis | Cache de listagens S3 (opcional, fallback silencioso) |
+| Server-Sent Events | Streaming de progresso em tempo real do backend ao frontend |
 | Bootstrap 5.3.3 (local) | UI components |
 | CSS3 (custom) | Glassmorphism, theme toggle, TRON palette |
 

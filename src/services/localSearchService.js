@@ -4,7 +4,8 @@ import path from 'path';
 import { logger } from '../utils/logger.js';
 import { runIndex, saveIndex, isDirScanned, markDirScanned } from '../db/indexDb.js';
 
-const SHARE_TIMEOUT_MS = 120_000;
+const QUICK_READDIR_TIMEOUT_MS = 240_000;
+const FIND_FILES_TIMEOUT_MS = 300_000;
 
 function getPathConfigsForYear(anoBusca) {
   const configs = [];
@@ -229,10 +230,6 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
       const t0 = performance.now();
 
       const shareAbort = new AbortController();
-      const shareTimer = setTimeout(() => shareAbort.abort(), SHARE_TIMEOUT_MS);
-      const signals = [shareAbort.signal];
-      if (externalSignal) signals.push(externalSignal);
-      const signal = AbortSignal.any(signals);
 
       const promessas = prefixosUnicos.map(async (prefixo) => {
         const fullPath = path.join(searchRoot, prefixo);
@@ -248,7 +245,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
         }
 
         for (const ext of LOCAL_SEARCH_EXTENSIONS) {
-          if (signal?.aborted) return null;
+          if (externalSignal?.aborted) return null;
           const directPath = path.join(fullPath, nomeProtocolo + ext);
           try {
             await fs.access(directPath);
@@ -279,9 +276,64 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
           return null;
         }
 
-        if (!signal?.aborted) {
+        if (!externalSignal?.aborted) {
+          let hourDirs;
+          try {
+            const dateEntries = await fs.readdir(fullPath, { withFileTypes: true, signal: externalSignal });
+            hourDirs = dateEntries.filter((d) => d.isDirectory()).map((d) => path.join(fullPath, d.name));
+          } catch {
+            hourDirs = [];
+          }
+
+          for (const hourDir of hourDirs) {
+            if (externalSignal?.aborted) break;
+            let dir;
+            try {
+              dir = await fs.opendir(hourDir);
+            } catch {
+              continue;
+            }
+            try {
+              let entry;
+              while ((entry = await dir.read()) !== null) {
+                if (externalSignal?.aborted) break;
+                if (entry.isDirectory()) continue;
+                const nomeBase = path.parse(entry.name).name.toLowerCase();
+                if (nomeBase.includes(termoBuscado)) {
+                  const hitPath = path.join(hourDir, entry.name);
+                  log.success(`   [FAST] Arquivo encontrado: ${hitPath}`);
+                  shareAbort.abort();
+                  const relativePath = path.relative(relativeBasePath, hitPath);
+                  const pathKey = relativePath.replace(/\\/g, '/');
+                  const nomeParaDownload = path.basename(pathKey);
+                  const downloadUrl = `/download-local?file=${encodeURIComponent(hitPath)}`;
+                  const protocolNumber = String(parseInt((path.parse(hitPath).name.match(/^\d+/) || ['0'])[0], 10));
+                  runIndex(
+                    `INSERT OR IGNORE INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)`,
+                    [protocolNumber, hitPath, path.parse(hitPath).name, searchRoot],
+                  );
+                  saveIndex();
+                  log.success(`Arquivo encontrado! Chave: ${pathKey}`);
+                  log.info(`Arquivo físico em: ${hitPath}`);
+                  return [{ downloadUrl, nomeParaDownload }];
+                }
+              }
+            } finally {
+              await dir.close();
+            }
+          }
+        }
+
+        if (!externalSignal?.aborted) {
+          const quickAbort = new AbortController();
+          const quickTimer = setTimeout(() => quickAbort.abort(), QUICK_READDIR_TIMEOUT_MS);
+          const quickSignals = [quickAbort.signal];
+          if (externalSignal) quickSignals.push(externalSignal);
+          const quickSignal = AbortSignal.any(quickSignals);
+
           const tQuick = performance.now();
-          const quickResults = await quickReaddirSearch(fullPath, termoBuscado, signal);
+          const quickResults = await quickReaddirSearch(fullPath, termoBuscado, quickSignal);
+          clearTimeout(quickTimer);
           log.info(
             `   [TIMING] quickReaddir: ${(performance.now() - tQuick).toFixed(0)}ms (encontrados ${quickResults.length})`,
           );
@@ -305,34 +357,44 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
           }
         }
 
-        const tFind = performance.now();
-        const foundFiles = await findFiles(fullPath, termoBuscado, signal, 3, searchRoot);
-        saveIndex();
-        log.info(
-          `   [TIMING] findFiles: ${(performance.now() - tFind).toFixed(0)}ms (indexados ${foundFiles.length} arquivos)`,
-        );
+        if (!externalSignal?.aborted) {
+          const findAbort = new AbortController();
+          const findTimer = setTimeout(() => findAbort.abort(), FIND_FILES_TIMEOUT_MS);
+          const findSignals = [findAbort.signal];
+          if (externalSignal) findSignals.push(externalSignal);
+          const findSignal = AbortSignal.any(findSignals);
 
-        if (foundFiles.length === 0) {
+          const tFind = performance.now();
+          const foundFiles = await findFiles(fullPath, termoBuscado, findSignal, 3, searchRoot);
+          clearTimeout(findTimer);
+          saveIndex();
+          log.info(
+            `   [TIMING] findFiles: ${(performance.now() - tFind).toFixed(0)}ms (indexados ${foundFiles.length} arquivos)`,
+          );
+
+          if (foundFiles.length === 0) {
+            markDirScanned(searchRoot, prefixo);
+            return null;
+          }
+
           markDirScanned(searchRoot, prefixo);
-          return null;
+          shareAbort.abort();
+          return foundFiles.map((fp) => {
+            const relativePath = path.relative(relativeBasePath, fp);
+            const pathKey = relativePath.replace(/\\/g, '/');
+            const nomeParaDownload = path.basename(pathKey);
+            const downloadUrl = `/download-local?file=${encodeURIComponent(fp)}`;
+            log.success(`Arquivo encontrado! Chave: ${pathKey}`);
+            log.info(`Arquivo físico em: ${fp}`);
+            log.info(`URL de download: ${downloadUrl}`);
+            return { downloadUrl, nomeParaDownload };
+          });
         }
 
-        markDirScanned(searchRoot, prefixo);
-
-        return foundFiles.map((fp) => {
-          const relativePath = path.relative(relativeBasePath, fp);
-          const pathKey = relativePath.replace(/\\/g, '/');
-          const nomeParaDownload = path.basename(pathKey);
-          const downloadUrl = `/download-local?file=${encodeURIComponent(fp)}`;
-          log.success(`Arquivo encontrado! Chave: ${pathKey}`);
-          log.info(`Arquivo físico em: ${fp}`);
-          log.info(`URL de download: ${downloadUrl}`);
-          return { downloadUrl, nomeParaDownload };
-        });
+        return null;
       });
 
       const resultado = await raceToFirstResult(promessas);
-      clearTimeout(shareTimer);
 
       if (resultado) {
         for (const prefixo of prefixosUnicos) {

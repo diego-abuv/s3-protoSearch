@@ -6,7 +6,7 @@ import { logger } from '../utils/logger.js';
 import { queryIndex } from '../db/indexDb.js';
 import { cacheGet, cacheSet } from '../utils/cache.js';
 
-const GLOBAL_TIMEOUT_MS = 600_000;
+const GLOBAL_TIMEOUT_MS = 900_000;
 const NULL_CACHE_TTL = 300;
 const FOUND_CACHE_TTL = 300;
 

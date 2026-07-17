@@ -1,10 +1,10 @@
-buscaprotocolo.grupoadrianocobuccio.com.br, localhost {
+localhost {
     tls internal # remover em produção
 
     handle {
         reverse_proxy s3-protosearch:80 {
             transport http {
-                read_timeout 600s
+                read_timeout 900s
             }
         }
         header {
