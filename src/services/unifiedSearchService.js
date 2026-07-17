@@ -57,19 +57,19 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey) {
       log.info(`   [TIMING] S3 retornou em ${((Date.now() - tS3) / 1000).toFixed(2)}s`);
       if (s3Result) {
         log.success('Arquivo(os) encontrado(os) no S3.');
-        onProgress?.({ type: 's3_done', message: `S3: encontrado(s) ${s3Result.length} arquivo(s)` });
+        onProgress?.({ type: 's3_done', message: 'S3: concluído' });
         log.section(`BUSCA FINALIZADA (${((Date.now() - inicio) / 1000).toFixed(2)}s)`);
         const s3ResultObj = { arquivos: s3Result, status: { s3: 'ok', local: localStatus } };
         await cacheSet(cacheKey, s3ResultObj, FOUND_CACHE_TTL);
         return s3ResultObj;
       }
       log.info('S3: Nenhum arquivo encontrado.');
-      onProgress?.({ type: 's3_done', message: 'S3: nenhum arquivo encontrado' });
+      onProgress?.({ type: 's3_done', message: 'S3: concluído' });
       s3Status = 'nao_encontrado';
     } catch (err) {
       log.error(`S3 indisponível ou falha de conexão: ${translateError(err.message)}`);
       log.info(`   [TIMING] S3 falhou em ${((Date.now() - tS3) / 1000).toFixed(2)}s`);
-      onProgress?.({ type: 's3_done', message: `S3: falha — ${translateError(err.message)}` });
+      onProgress?.({ type: 's3_done', message: 'S3: concluído (falha)' });
       s3Status = `erro: ${translateError(err.message)}`;
     }
 
@@ -83,7 +83,7 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey) {
 
       if (idxResults && idxResults.length > 0) {
         log.success(`Arquivo(s) encontrado(s) no índice local (${idxResults.length}).`);
-        onProgress?.({ type: 'index_done', message: `Índice: encontrado(s) ${idxResults.length} arquivo(s)` });
+        onProgress?.({ type: 'index_done', message: 'Índice: concluído' });
         const arquivos = idxResults.map((r) => ({
           downloadUrl: `/download-local?file=${encodeURIComponent(r.file_path)}`,
           nomeParaDownload: path.basename(r.file_name),
@@ -106,7 +106,7 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey) {
         log.success(`Arquivo(s) encontrado(s) no índice local por substring (${likeResults.length}).`);
         onProgress?.({
           type: 'index_done',
-          message: `Índice: encontrado(s) ${likeResults.length} arquivo(s) (substring)`,
+          message: 'Índice: concluído',
         });
         const arquivos = likeResults.map((r) => ({
           downloadUrl: `/download-local?file=${encodeURIComponent(r.file_path)}`,
@@ -122,7 +122,7 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey) {
       log.warn(`Busca por substring indisponível: ${translateError(likeErr.message)}`);
     }
 
-    onProgress?.({ type: 'index_done', message: 'Índice: nenhum arquivo encontrado' });
+    onProgress?.({ type: 'index_done', message: 'Índice: concluído' });
     log.info('2. Tentando busca local (fallback)...');
     onProgress?.({ type: 'local_start', message: 'Escaneando servidores locais...' });
     try {

@@ -101,6 +101,21 @@ async function findFiles(dirPath, targetName, signal, maxDepth, searchRoot) {
 
 const LOCAL_SEARCH_EXTENSIONS = ['.mp3', '.wav', '.mp4', '.pdf', '.ogg', '.wma', '.avi', '.txt'];
 
+const SERVER_NAMES = {
+  '192-168-144-254': 'AD-THE',
+  '192-168-0-254': 'AD-MBE',
+  '192-168-16-74': 'STORAGE',
+  '192-168-0-196': 'BACKUP',
+};
+
+function getShareFriendlyName(searchRoot) {
+  for (const [ip, name] of Object.entries(SERVER_NAMES)) {
+    if (searchRoot.includes(ip)) return name;
+  }
+  const match = searchRoot.match(/(\d+\.\d+\.\d+\.\d+)/);
+  return match ? `Servidor ${match[1]}` : 'Servidor';
+}
+
 function raceToFirstResult(promises) {
   return new Promise((resolve) => {
     let settled = false;
@@ -210,7 +225,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
       const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase();
 
       log.info(`Buscando em: ${searchRoot}`);
-      onProgress?.({ type: 'local_share', message: `Escaneando ${searchRoot}...` });
+      onProgress?.({ type: 'local_share', message: `Escaneando ${getShareFriendlyName(searchRoot)}...` });
       const t0 = performance.now();
 
       const shareAbort = new AbortController();

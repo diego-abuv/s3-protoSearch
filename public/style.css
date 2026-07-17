@@ -402,6 +402,14 @@ body {
 .step-indicator {
   width: 1rem;
   height: 1rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+}
+
+.progress-step.active .step-indicator {
   border: 2px solid var(--gradient-start);
   border-top-color: transparent;
   border-radius: 50%;
