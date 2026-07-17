@@ -15,15 +15,22 @@ Aplicação web containerizada para busca unificada de arquivos de áudio/docume
 ## Screenshots
 
 <p align="center">
-  <img src="assets/screenshot-1.png" width="45%" alt="Múltiplos resultados no modo escuro">
-  <img src="assets/screenshot-4.png" width="45%" alt="Fallback automático S3 → Local">
+  <img src="assets/login-dark.png" width="80%" alt="Tela de login — modo escuro">
 </p>
 <p align="center">
-  <img src="assets/screenshot-2.png" width="45%" alt="Busca em subpastas">
-  <img src="assets/screenshot-3.png" width="45%" alt="Tema claro">
+  <img src="assets/login-light.png" width="80%" alt="Tela de login — modo claro">
 </p>
 <p align="center">
-  <img src="assets/screenshot-5.png" width="45%" alt="Nenhum resultado">
+  <img src="assets/search-results-dark.png" width="80%" alt="Resultado de busca — modo escuro">
+</p>
+<p align="center">
+  <img src="assets/search-results-light.png" width="80%" alt="Resultado de busca — modo claro">
+</p>
+<p align="center">
+  <img src="assets/search-progress-dark.png" width="80%" alt="Animação de progresso com fallback S3 → Local">
+</p>
+<p align="center">
+  <img src="assets/admin-dashboard-dark.png" width="80%" alt="Painel admin — dashboard">
 </p>
 
 ---
@@ -171,7 +178,7 @@ docker compose -f docker-compose.yml -f docker-compose.https.yml up -d --build
 NODE_ENV=busca-ligacoes
 
 # Logs
-PUBLIC_HOST=seu-dns-ou-ip-publick
+PUBLIC_HOST=seu-dns-ou-ip-publico
 PUBLIC_PROTOCOL=http
 PORT=3000
 
@@ -198,8 +205,8 @@ ADMIN_KEY=chave-para-criar-usuarios
 
 | Variável | Obrigatório | Descrição |
 |----------|------------|-----------|
-| `PORT` | Não | Porta exibida no log (padrão 3000, apenas informativa) |
-| `NODE_ENV` | Não | `busca-ligacoes` ativa download local |
+| `PORT` | Não | Porta do servidor (padrão 80). Usada em `app.listen()` |
+| `NODE_ENV` | Não | Identificador do ambiente (ex: `busca-ligacoes`). Exibido em logs |
 | `PUBLIC_PROTOCOL` | Não | Protocolo público (`http`/`https`), exibido no log |
 | `PUBLIC_HOST` | Não | Host público (IP ou DNS), exibido no log |
 | `AWS_*` | Sim | Credenciais + bucket + região |
@@ -284,18 +291,18 @@ s3-protoSearch/
 ├── test/
 │   ├── db/
 │   │   ├── sqlite.test.js        # 13 testes
-│   │   └── indexDb.test.js       # 10 testes
+│   │   └── indexDb.test.js       # 11 testes
 │   ├── middleware/
 │   │   └── auth.test.js          # 14 testes
 │   ├── routes/
-│   │   ├── auth.test.js          # 23 testes
-│   │   ├── admin.test.js         # 24 testes
+│   │   ├── auth.test.js          # 26 testes
+│   │   ├── admin.test.js         # 62 testes
 │   │   ├── search.test.js        # 8 testes
 │   │   └── download.test.js      # 8 testes
 │   ├── services/
-│   │   ├── s3SearchService.test.js       # 8 testes
+│   │   ├── s3SearchService.test.js       # 10 testes
 │   │   ├── localSearchService.test.js    # 4 testes
-│   │   └── unifiedSearchService.test.js  # 7 testes
+│   │   └── unifiedSearchService.test.js  # 9 testes
 │   └── utils/
 │       ├── validation.test.js    # 26 testes
 │       ├── errorCodes.test.js    # 15 testes
@@ -419,8 +426,13 @@ Define o cookie `refresh_token` (httpOnly, secure, sameSite=strict) com duraçã
 | `POST` | `/admin/users` | Cria usuário (body: `{ username, password, role }`) |
 | `PATCH` | `/admin/users/:id` | Atualiza usuário (body: `{ username?, password?, role? }`) |
 | `DELETE` | `/admin/users/:id` | Remove usuário |
+| `PATCH` | `/admin/users/:id/block` | Bloqueia/desbloqueia usuário |
+| `POST` | `/admin/users/:id/force-logout` | Revoga todas as sessões do usuário |
+| `POST` | `/admin/users/:id/reset-password` | Redefine senha de outro usuário (body: `{ password }`) |
 | `GET` | `/admin/audit` | Log de auditoria paginado |
+| `GET` | `/admin/audit/export` | Exporta audit log como CSV |
 | `GET` | `/admin/stats` | Estatísticas (total usuários, tokens ativos, ações) |
+| `GET` | `/admin/stats/chart` | Dados de buscas dos últimos 7 dias |
 
 ---
 
@@ -430,9 +442,10 @@ Define o cookie `refresh_token` (httpOnly, secure, sameSite=strict) com duraçã
 |-------------|---------------|------|---------|
 | `ok` | `nao_consultado` | **200** | S3 encontrou, fallback não foi necessário |
 | `nao_encontrado` | `ok` | **200** | S3 não tinha o arquivo, local encontrou |
+| `nao_encontrado` | `indexado` | **200** | S3 não achou, índice local encontrou |
 | `erro: ...` | `ok` | **200** | S3 indisponível, local assumiu |
+| `erro: ...` | `indexado` | **200** | S3 falhou, índice local encontrou |
 | `nao_encontrado` | `nao_encontrado` | **404** | Arquivo não existe em nenhuma fonte |
-| `nao_encontrado` | `ja_indexado` | **404** | Diretório já havia sido indexado, arquivo não encontrado |
 | `erro: ...` | `erro: ...` | **404** | Ambas as fontes falharam |
 
 ### Códigos HTTP
@@ -450,11 +463,11 @@ Define o cookie `refresh_token` (httpOnly, secure, sameSite=strict) com duraçã
 
 | Erro original | Mensagem amigável |
 |--------------|-------------------|
-| `must be addressed` | Endpoint do bucket AWS incorreto. Verifique a região configurada. |
-| `access denied` / `signaturedoesnotmatch` | Credenciais AWS inválidas ou sem permissão de acesso. |
-| `nosuchbucket` / `allaccessdisabled` | Bucket AWS não encontrado ou acesso desabilitado. |
-| `eai_again` / `econnrefused` / `etimedout` / ... | Sistema AWS indisponível no momento. |
-| *(qualquer outro)* | Conexão com AWS S3 indisponível. Buscando nos servidores locais... |
+| `timeout` / `timed out` | A requisição excedeu o tempo limite. Tente novamente. |
+| `access denied` / `accessdenied` | Acesso negado. Verifique as permissões. |
+| `network` / `econnrefused` / `enotfound` | Erro de rede. Verifique sua conexão. |
+| `notfound` / `nosuchkey` / `no such key` | Arquivo não encontrado. |
+| *(qualquer outro)* | Ocorreu um erro inesperado. |
 
 ### Erros Locais
 
@@ -599,7 +612,7 @@ npm run dev                     # Node --watch com auto-restart
 
 ## Testes
 
-**201 testes — 15 arquivos — Vitest + Supertest**
+**243 testes — 15 arquivos — Vitest + Supertest**
 
 | Comando | Descrição |
 |---------|-----------|
@@ -614,30 +627,32 @@ npm run dev                     # Node --watch com auto-restart
 | Fase | Arquivos | Testes |
 |------|----------|--------|
 | Foundation (validação, erros) | 2 | 41 |
-| Database (sqlite, indexDb) | 2 | 23 |
+| Database (sqlite, indexDb) | 2 | 24 |
 | Middleware + Utilitários | 3 | 39 |
 | Cache Redis | 1 | 12 |
 | Services (S3, Local, Unificado) | 3 | 23 |
-| Routes (auth, admin, search, download) | 4 | 63 |
+| Routes (auth, admin, search, download) | 4 | 104 |
 
 ---
 
-## Cache Redis (Fase 3)
+## Cache Redis
 
-Cache opcional baseado em Redis para evitar chamadas repetidas ao S3.
+Cache opcional baseado em Redis para evitar chamadas repetidas ao S3 e acelerar buscas recorrentes.
 
 ### Comportamento
 
 | Chave | TTL | Descrição |
 |-------|-----|-----------|
 | `s3-list:{prefixo}` | 300s | Listing completo do prefixo S3 (ex: `2025/4/4/`) |
-| `busca:{pasta}:{termo}` | 300s | Resultado unificado da busca |
+| `busca:{pasta}:{termo}` | 300s (acerto) / 30s (nulo) | Resultado unificado da busca |
+| `s3:{pasta}:{termo}` | 600s | Resultado individual de busca no S3 |
 
 ### Estratégia
 
 1. **Primeira busca** no prefixo → `ListObjectsV2` (S3) → cacheia listing inteiro no Redis
 2. **Buscas seguintes** no mesmo prefixo → filtra listing cacheado localmente (ms)
-3. **Se Redis cai** → fallback silencioso, busca S3 direto
+3. **Resultados nulos** (arquivo não encontrado) têm TTL reduzido (30s) para evitar cache de "não encontrado" por muito tempo
+4. **Se Redis cai** → fallback silencioso, busca S3 direto
 
 ### Ativação
 
