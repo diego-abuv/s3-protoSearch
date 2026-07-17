@@ -30,12 +30,36 @@ export function createSearchRoutes(searchableService) {
       });
     }
 
-    try {
-      const pastaFormatada = pasta.replace(/-/g, '/');
+    const pastaFormatada = pasta.replace(/-/g, '/');
+    const wantsSSE = req.headers.accept === 'text/event-stream';
+    const start = performance.now();
+    const ctxLogger = createContextLogger({ username: req.user.username });
 
-      const start = performance.now();
-      const ctxLogger = createContextLogger({ username: req.user.username });
-      const resultado = await searchableService.findFileAndGetSignedUrl(pastaFormatada, nomeProtocolo, ctxLogger);
+    const onProgress = wantsSSE
+      ? (data) => {
+          try {
+            res.write(`event: progress\ndata: ${JSON.stringify(data)}\n\n`);
+          } catch {
+            /* connection already closed */
+          }
+        }
+      : undefined;
+
+    if (wantsSSE) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('X-Accel-Buffering', 'no');
+      res.flushHeaders();
+    }
+
+    try {
+      const resultado = await searchableService.findFileAndGetSignedUrl(
+        pastaFormatada,
+        nomeProtocolo,
+        ctxLogger,
+        onProgress,
+      );
       const elapsed = ((performance.now() - start) / 1000).toFixed(2);
 
       const found = resultado.arquivos && resultado.arquivos.length > 0;
@@ -50,6 +74,18 @@ export function createSearchRoutes(searchableService) {
         details,
         ip: req.ip,
       });
+
+      if (wantsSSE) {
+        res.write(
+          `event: result\ndata: ${JSON.stringify({
+            encontrado: found,
+            arquivos: resultado.arquivos,
+            status: resultado.status,
+          })}\n\n`,
+        );
+        res.end();
+        return;
+      }
 
       if (found) {
         return res.status(200).json({
@@ -74,6 +110,20 @@ export function createSearchRoutes(searchableService) {
         details: `erro=${sanitizeError(err)}`,
         ip: req.ip,
       });
+
+      if (wantsSSE) {
+        res.write(
+          `event: result\ndata: ${JSON.stringify({
+            encontrado: false,
+            arquivos: null,
+            status: { s3: `erro: ${sanitizeError(err)}`, local: 'nao_consultado' },
+            error: 'Ocorreu um erro inesperado no servidor.',
+          })}\n\n`,
+        );
+        res.end();
+        return;
+      }
+
       return res.status(500).json({
         encontrado: false,
         arquivos: null,

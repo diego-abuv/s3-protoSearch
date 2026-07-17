@@ -74,7 +74,11 @@
   </main>
 
   <template id="tmpl-progress">
-    <div class="search-progress"><div class="progress-step active"><span class="step-indicator"></span><span>Consultando servidores...</span></div></div>
+    <div class="search-progress" id="searchProgress"></div>
+  </template>
+
+  <template id="tmpl-progress-step">
+    <div class="progress-step active"><span class="step-indicator"></span><span class="step-text"></span></div>
   </template>
 
   <template id="tmpl-result-card">

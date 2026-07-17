@@ -7,17 +7,37 @@ import { queryIndex } from '../db/indexDb.js';
 import { cacheGet, cacheSet } from '../utils/cache.js';
 
 const GLOBAL_TIMEOUT_MS = 600_000;
-const NULL_CACHE_TTL = 30;
+const NULL_CACHE_TTL = 300;
 const FOUND_CACHE_TTL = 300;
 
-export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger) {
+const activeSearches = new Map();
+
+export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger, onProgress) {
   const cacheKey = `busca:${pasta}:${nomeProtocolo}`;
   const cached = await cacheGet(cacheKey);
   if (cached) {
     log.info('Cache hit busca unificada');
+    onProgress?.({ type: 'cache_hit', message: 'Resultado encontrado no cache' });
     return cached;
   }
 
+  if (activeSearches.has(cacheKey)) {
+    log.info('Busca duplicada, aguardando resultado existente');
+    onProgress?.({ type: 'dedup', message: 'Busca já em andamento, aguardando...' });
+    return activeSearches.get(cacheKey);
+  }
+
+  const searchPromise = doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey);
+  activeSearches.set(cacheKey, searchPromise);
+
+  try {
+    return await searchPromise;
+  } finally {
+    activeSearches.delete(cacheKey);
+  }
+}
+
+async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey) {
   const inicio = Date.now();
   const globalAbort = new AbortController();
   const globalSignal = globalAbort.signal;
@@ -30,26 +50,30 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
 
   try {
     log.info('1. Tentando busca no S3...');
+    onProgress?.({ type: 's3_start', message: 'Buscando no S3 (nuvem)...' });
     const tS3 = Date.now();
     try {
       const s3Result = await findInS3(pasta, nomeProtocolo, log);
       log.info(`   [TIMING] S3 retornou em ${((Date.now() - tS3) / 1000).toFixed(2)}s`);
       if (s3Result) {
         log.success('Arquivo(os) encontrado(os) no S3.');
+        onProgress?.({ type: 's3_done', message: `S3: encontrado(s) ${s3Result.length} arquivo(s)` });
         log.section(`BUSCA FINALIZADA (${((Date.now() - inicio) / 1000).toFixed(2)}s)`);
         const s3ResultObj = { arquivos: s3Result, status: { s3: 'ok', local: localStatus } };
         await cacheSet(cacheKey, s3ResultObj, FOUND_CACHE_TTL);
         return s3ResultObj;
       }
       log.info('S3: Nenhum arquivo encontrado.');
+      onProgress?.({ type: 's3_done', message: 'S3: nenhum arquivo encontrado' });
       s3Status = 'nao_encontrado';
     } catch (err) {
       log.error(`S3 indisponível ou falha de conexão: ${translateError(err.message)}`);
       log.info(`   [TIMING] S3 falhou em ${((Date.now() - tS3) / 1000).toFixed(2)}s`);
+      onProgress?.({ type: 's3_done', message: `S3: falha — ${translateError(err.message)}` });
       s3Status = `erro: ${translateError(err.message)}`;
     }
 
-    // Tenta o índice local antes do scan completo no filesystem
+    onProgress?.({ type: 'index_check', message: 'Verificando índice local...' });
     const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase();
     try {
       const protocolPrefix = String(parseInt((termoBuscado.match(/^\d+/) || [termoBuscado])[0], 10));
@@ -59,6 +83,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
 
       if (idxResults && idxResults.length > 0) {
         log.success(`Arquivo(s) encontrado(s) no índice local (${idxResults.length}).`);
+        onProgress?.({ type: 'index_done', message: `Índice: encontrado(s) ${idxResults.length} arquivo(s)` });
         const arquivos = idxResults.map((r) => ({
           downloadUrl: `/download-local?file=${encodeURIComponent(r.file_path)}`,
           nomeParaDownload: path.basename(r.file_name),
@@ -73,13 +98,16 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
       log.warn(`Índice local indisponível, seguindo para fallback: ${translateError(idxErr.message)}`);
     }
 
-    // Fallback: busca por substring no nome do arquivo
     try {
       const likeResults = queryIndex(`SELECT file_path, file_name FROM file_index WHERE file_name LIKE ? LIMIT 20`, [
         `%${termoBuscado}%`,
       ]);
       if (likeResults && likeResults.length > 0) {
         log.success(`Arquivo(s) encontrado(s) no índice local por substring (${likeResults.length}).`);
+        onProgress?.({
+          type: 'index_done',
+          message: `Índice: encontrado(s) ${likeResults.length} arquivo(s) (substring)`,
+        });
         const arquivos = likeResults.map((r) => ({
           downloadUrl: `/download-local?file=${encodeURIComponent(r.file_path)}`,
           nomeParaDownload: path.basename(r.file_name),
@@ -94,9 +122,11 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
       log.warn(`Busca por substring indisponível: ${translateError(likeErr.message)}`);
     }
 
+    onProgress?.({ type: 'index_done', message: 'Índice: nenhum arquivo encontrado' });
     log.info('2. Tentando busca local (fallback)...');
+    onProgress?.({ type: 'local_start', message: 'Escaneando servidores locais...' });
     try {
-      const localResult = await findLocally(pasta, nomeProtocolo, log, globalSignal);
+      const localResult = await findLocally(pasta, nomeProtocolo, log, globalSignal, onProgress);
 
       if (Array.isArray(localResult)) {
         if (localResult.length > 0) {

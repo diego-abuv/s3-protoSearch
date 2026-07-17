@@ -4,6 +4,8 @@ import path from 'path';
 import { logger } from '../utils/logger.js';
 import { runIndex, saveIndex, isDirScanned, markDirScanned } from '../db/indexDb.js';
 
+const SHARE_TIMEOUT_MS = 120_000;
+
 function getPathConfigsForYear(anoBusca) {
   const configs = [];
   const anoBuscaStr = anoBusca.toString();
@@ -158,7 +160,7 @@ async function quickReaddirSearch(dirPath, targetName, signal, maxDepth = 1) {
   return results;
 }
 
-export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger, externalSignal) {
+export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger, externalSignal, onProgress) {
   log.section('Início da requisição de busca local');
   log.info(`- Data do Protocolo (pasta): ${pasta}`);
   log.info(`- Nome do Arquivo (nomeProtocolo): ${nomeProtocolo}`);
@@ -208,10 +210,12 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
       const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase();
 
       log.info(`Buscando em: ${searchRoot}`);
+      onProgress?.({ type: 'local_share', message: `Escaneando ${searchRoot}...` });
       const t0 = performance.now();
 
-      const localAbort = new AbortController();
-      const signals = [localAbort.signal];
+      const shareAbort = new AbortController();
+      const shareTimer = setTimeout(() => shareAbort.abort(), SHARE_TIMEOUT_MS);
+      const signals = [shareAbort.signal];
       if (externalSignal) signals.push(externalSignal);
       const signal = AbortSignal.any(signals);
 
@@ -228,7 +232,6 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
           return null;
         }
 
-        // Tentativa direta com extensões comuns
         for (const ext of LOCAL_SEARCH_EXTENSIONS) {
           if (signal?.aborted) return null;
           const directPath = path.join(fullPath, nomeProtocolo + ext);
@@ -236,7 +239,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
             await fs.access(directPath);
             log.success(`   [DIRECT] Arquivo encontrado via acesso direto: ${directPath}`);
 
-            localAbort.abort();
+            shareAbort.abort();
             const relativePath = path.relative(relativeBasePath, directPath);
             const pathKey = relativePath.replace(/\\/g, '/');
             const nomeParaDownload = path.basename(pathKey);
@@ -256,7 +259,11 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
           }
         }
 
-        // Busca rápida por readdir (substring, 2 níveis)
+        if (isDirScanned(searchRoot, prefixo, 1)) {
+          log.info(`   [SKIP] ${prefixo} já indexado há menos de 1h. Pulando readdir + scan.`);
+          return null;
+        }
+
         if (!signal?.aborted) {
           const tQuick = performance.now();
           const quickResults = await quickReaddirSearch(fullPath, termoBuscado, signal);
@@ -265,7 +272,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
           );
 
           if (quickResults.length > 0) {
-            localAbort.abort();
+            shareAbort.abort();
             return quickResults.map((fp) => {
               const relativePath = path.relative(relativeBasePath, fp);
               const pathKey = relativePath.replace(/\\/g, '/');
@@ -283,12 +290,6 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
           }
         }
 
-        // Fallback: escaneia com indexação on-the-fly
-        if (isDirScanned(searchRoot, prefixo)) {
-          log.info(`   [SKIP] ${prefixo} já indexado há menos de 24h. Pulando scan.`);
-          return null;
-        }
-
         const tFind = performance.now();
         const foundFiles = await findFiles(fullPath, termoBuscado, signal, 3, searchRoot);
         saveIndex();
@@ -296,7 +297,10 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
           `   [TIMING] findFiles: ${(performance.now() - tFind).toFixed(0)}ms (indexados ${foundFiles.length} arquivos)`,
         );
 
-        if (foundFiles.length === 0) return null;
+        if (foundFiles.length === 0) {
+          markDirScanned(searchRoot, prefixo);
+          return null;
+        }
 
         markDirScanned(searchRoot, prefixo);
 
@@ -313,8 +317,8 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
       });
 
       const resultado = await raceToFirstResult(promessas);
+      clearTimeout(shareTimer);
 
-      // Só marca como escaneado se encontrou arquivos — evita bloquear retry por 24h
       if (resultado) {
         for (const prefixo of prefixosUnicos) {
           const fullPath = path.join(searchRoot, prefixo);
@@ -331,7 +335,6 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
 
       log.info(`   [TIMING] Busca local resolvida em ${(performance.now() - t0).toFixed(0)}ms`);
 
-      // Persiste índice assíncrono (arquivos indexados no fallback)
       setImmediate(() => saveIndex());
 
       if (resultado) {

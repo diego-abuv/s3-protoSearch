@@ -93,7 +93,12 @@ describe('Search Routes', () => {
         .post('/buscar-arquivo')
         .set('Authorization', `Bearer ${makeToken()}`)
         .send({ pasta: '2024-01-02', nomeProtocolo: '12345' });
-      expect(mockService.findFileAndGetSignedUrl).toHaveBeenCalledWith('2024/01/02', '12345', expect.any(Object));
+      expect(mockService.findFileAndGetSignedUrl).toHaveBeenCalledWith(
+        '2024/01/02',
+        '12345',
+        expect.any(Object),
+        undefined,
+      );
     });
 
     it('retorna 404 quando nenhum arquivo encontrado', async () => {

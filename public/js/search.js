@@ -13,6 +13,22 @@ dataInput.addEventListener('paste', (e) => {
   }
 });
 
+function addProgressStep(message) {
+  const progressDiv = document.getElementById('searchProgress');
+  if (!progressDiv) return;
+
+  const prevActive = progressDiv.querySelector('.progress-step.active');
+  if (prevActive) {
+    prevActive.classList.remove('active');
+    const prevIndicator = prevActive.querySelector('.step-indicator');
+    if (prevIndicator) prevIndicator.innerHTML = '&#10003;';
+  }
+
+  const tmpl = document.getElementById('tmpl-progress-step').content.cloneNode(true);
+  tmpl.querySelector('.step-text').textContent = message;
+  progressDiv.appendChild(tmpl);
+}
+
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   event.stopPropagation();
@@ -32,15 +48,75 @@ form.addEventListener('submit', async (event) => {
   resultadoDiv.appendChild(
     document.getElementById('tmpl-progress').content.cloneNode(true)
   );
+  addProgressStep('Iniciando busca...');
 
   const duracao = () => ((performance.now() - inicio) / 1000).toFixed(2);
 
   try {
     const response = await Auth.authFetch('/buscar-arquivo', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
       body: JSON.stringify({ pasta, nomeProtocolo }),
     });
+
+    if (response.headers.get('content-type')?.includes('text/event-stream')) {
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let eventType = '';
+      let finalData = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const parts = buffer.split('\n');
+        buffer = parts.pop();
+
+        for (const line of parts) {
+          if (line.startsWith('event: ')) {
+            eventType = line.slice(7).trim();
+          } else if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (eventType === 'progress') {
+                addProgressStep(data.message);
+              } else if (eventType === 'result') {
+                finalData = data;
+              }
+            } catch {
+              /* ignore parse errors */
+            }
+          }
+        }
+      }
+
+      if (finalData) {
+        resultadoDiv.innerHTML = '';
+        if (finalData.encontrado && finalData.arquivos && finalData.arquivos.length > 0) {
+          resultadoDiv.appendChild(buildResultHtml({
+            encontrado: true,
+            arquivos: finalData.arquivos,
+            status: finalData.status,
+          }, duracao()));
+        } else {
+          const card = document.getElementById('tmpl-error-card').content.cloneNode(true);
+          if (finalData.error) {
+            card.querySelector('.fs-6').textContent = 'Erro no servidor';
+            card.querySelector('.text-secondary.small').textContent = finalData.error;
+          } else {
+            card.querySelector('.fs-6').textContent = 'Arquivo não encontrado';
+            card.querySelector('.text-secondary.small').textContent =
+              'Nenhum arquivo encontrado para este protocolo nesta data.';
+          }
+          const pre = card.querySelector('pre');
+          if (pre) pre.remove();
+          resultadoDiv.appendChild(card);
+        }
+      }
+      return;
+    }
 
     const raw = await response.text();
 
