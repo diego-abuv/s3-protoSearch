@@ -396,20 +396,6 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
 
       const resultado = await raceToFirstResult(promessas);
 
-      if (resultado) {
-        for (const prefixo of prefixosUnicos) {
-          const fullPath = path.join(searchRoot, prefixo);
-          try {
-            await fs.stat(fullPath);
-            if (!isDirScanned(searchRoot, prefixo)) {
-              markDirScanned(searchRoot, prefixo);
-            }
-          } catch {
-            /* Diretório não existe, ignora */
-          }
-        }
-      }
-
       log.info(`   [TIMING] Busca local resolvida em ${(performance.now() - t0).toFixed(0)}ms`);
 
       setImmediate(() => saveIndex());
