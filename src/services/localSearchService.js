@@ -145,7 +145,7 @@ async function quickReaddirSearch(dirPath, targetName, signal, maxDepth = 1) {
   const stack = [[dirPath, 0]];
 
   while (stack.length > 0) {
-    if (signal?.aborted || results.length > 0) break;
+    if (signal?.aborted) break;
     const [currentDir, depth] = stack.pop();
 
     let items;
@@ -157,7 +157,7 @@ async function quickReaddirSearch(dirPath, targetName, signal, maxDepth = 1) {
     if (!items || items.length === 0) continue;
 
     for (const item of items) {
-      if (signal?.aborted || results.length > 0) break;
+      if (signal?.aborted) break;
       const fullPath = path.join(currentDir, item.name);
 
       if (item.isDirectory()) {
@@ -302,20 +302,6 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
                 const nomeBase = path.parse(entry.name).name.toLowerCase();
                 if (nomeBase.includes(termoBuscado)) {
                   fastMatches.push(entry);
-                }
-                if (fastMatches.length > 0) {
-                  let extraCount = 0;
-                  while (extraCount < 10 && (entry = await dir.read()) !== null) {
-                    if (externalSignal?.aborted) break;
-                    if (!entry.isDirectory()) {
-                      const nomeExtra = path.parse(entry.name).name.toLowerCase();
-                      if (nomeExtra.includes(termoBuscado)) {
-                        fastMatches.push(entry);
-                      }
-                    }
-                    extraCount++;
-                  }
-                  break;
                 }
               }
 
