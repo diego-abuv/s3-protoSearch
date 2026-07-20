@@ -295,14 +295,35 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
             }
             try {
               let entry;
+              const fastMatches = [];
               while ((entry = await dir.read()) !== null) {
                 if (externalSignal?.aborted) break;
                 if (entry.isDirectory()) continue;
                 const nomeBase = path.parse(entry.name).name.toLowerCase();
                 if (nomeBase.includes(termoBuscado)) {
+                  fastMatches.push(entry);
+                }
+                if (fastMatches.length > 0) {
+                  let extraCount = 0;
+                  while (extraCount < 10 && (entry = await dir.read()) !== null) {
+                    if (externalSignal?.aborted) break;
+                    if (!entry.isDirectory()) {
+                      const nomeExtra = path.parse(entry.name).name.toLowerCase();
+                      if (nomeExtra.includes(termoBuscado)) {
+                        fastMatches.push(entry);
+                      }
+                    }
+                    extraCount++;
+                  }
+                  break;
+                }
+              }
+
+              if (fastMatches.length > 0) {
+                shareAbort.abort();
+                const results = fastMatches.map((entry) => {
                   const hitPath = path.join(hourDir, entry.name);
                   log.success(`   [FAST] Arquivo encontrado: ${hitPath}`);
-                  shareAbort.abort();
                   const relativePath = path.relative(relativeBasePath, hitPath);
                   const pathKey = relativePath.replace(/\\/g, '/');
                   const nomeParaDownload = path.basename(pathKey);
@@ -312,11 +333,12 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
                     `INSERT OR IGNORE INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)`,
                     [protocolNumber, hitPath, path.parse(hitPath).name, searchRoot],
                   );
-                  saveIndex();
                   log.success(`Arquivo encontrado! Chave: ${pathKey}`);
                   log.info(`Arquivo físico em: ${hitPath}`);
-                  return [{ downloadUrl, nomeParaDownload }];
-                }
+                  return { downloadUrl, nomeParaDownload };
+                });
+                saveIndex();
+                return results;
               }
             } finally {
               await dir.close();
