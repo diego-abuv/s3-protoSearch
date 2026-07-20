@@ -145,7 +145,7 @@ async function quickReaddirSearch(dirPath, targetName, signal, maxDepth = 1) {
   const stack = [[dirPath, 0]];
 
   while (stack.length > 0) {
-    if (signal?.aborted || results.length > 0) break;
+    if (signal?.aborted) break;
     const [currentDir, depth] = stack.pop();
 
     let items;
@@ -157,7 +157,7 @@ async function quickReaddirSearch(dirPath, targetName, signal, maxDepth = 1) {
     if (!items || items.length === 0) continue;
 
     for (const item of items) {
-      if (signal?.aborted || results.length > 0) break;
+      if (signal?.aborted) break;
       const fullPath = path.join(currentDir, item.name);
 
       if (item.isDirectory()) {
@@ -285,42 +285,79 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
             hourDirs = [];
           }
 
-          for (const hourDir of hourDirs) {
-            if (externalSignal?.aborted) break;
-            let dir;
-            try {
-              dir = await fs.opendir(hourDir);
-            } catch {
-              continue;
-            }
-            try {
-              let entry;
-              while ((entry = await dir.read()) !== null) {
-                if (externalSignal?.aborted) break;
-                if (entry.isDirectory()) continue;
-                const nomeBase = path.parse(entry.name).name.toLowerCase();
-                if (nomeBase.includes(termoBuscado)) {
-                  const hitPath = path.join(hourDir, entry.name);
-                  log.success(`   [FAST] Arquivo encontrado: ${hitPath}`);
-                  shareAbort.abort();
-                  const relativePath = path.relative(relativeBasePath, hitPath);
-                  const pathKey = relativePath.replace(/\\/g, '/');
-                  const nomeParaDownload = path.basename(pathKey);
-                  const downloadUrl = `/download-local?file=${encodeURIComponent(hitPath)}`;
-                  const protocolNumber = String(parseInt((path.parse(hitPath).name.match(/^\d+/) || ['0'])[0], 10));
+          let allHourDirsProcessed = true;
+          let fileCount = 0;
+
+          runIndex('BEGIN TRANSACTION');
+
+          try {
+            for (const hourDir of hourDirs) {
+              if (externalSignal?.aborted) break;
+              let dir;
+              try {
+                dir = await fs.opendir(hourDir);
+              } catch {
+                allHourDirsProcessed = false;
+                continue;
+              }
+              try {
+                let entry;
+                const fastMatches = [];
+                while ((entry = await dir.read()) !== null) {
+                  if (externalSignal?.aborted) break;
+                  if (entry.isDirectory()) continue;
+                  const nomeBase = path.parse(entry.name).name.toLowerCase();
+                  const protocolNumber = String(parseInt((nomeBase.match(/^\d+/) || [nomeBase])[0], 10));
                   runIndex(
                     `INSERT OR IGNORE INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)`,
-                    [protocolNumber, hitPath, path.parse(hitPath).name, searchRoot],
+                    [protocolNumber, path.join(hourDir, entry.name), entry.name, searchRoot],
                   );
-                  saveIndex();
-                  log.success(`Arquivo encontrado! Chave: ${pathKey}`);
-                  log.info(`Arquivo físico em: ${hitPath}`);
-                  return [{ downloadUrl, nomeParaDownload }];
+                  fileCount++;
+                  if (nomeBase.includes(termoBuscado)) {
+                    fastMatches.push(entry);
+                  }
+                  if (fileCount % 5000 === 0) {
+                    runIndex('COMMIT');
+                    runIndex('BEGIN TRANSACTION');
+                  }
                 }
+
+                if (fastMatches.length > 0) {
+                  shareAbort.abort();
+                  const results = fastMatches.map((entry) => {
+                    const hitPath = path.join(hourDir, entry.name);
+                    log.success(`   [FAST] Arquivo encontrado: ${hitPath}`);
+                    const relativePath = path.relative(relativeBasePath, hitPath);
+                    const pathKey = relativePath.replace(/\\/g, '/');
+                    const nomeParaDownload = path.basename(pathKey);
+                    const downloadUrl = `/download-local?file=${encodeURIComponent(hitPath)}`;
+                    log.success(`Arquivo encontrado! Chave: ${pathKey}`);
+                    log.info(`Arquivo físico em: ${hitPath}`);
+                    return { downloadUrl, nomeParaDownload };
+                  });
+                  runIndex('COMMIT');
+                  saveIndex();
+                  return results;
+                }
+              } finally {
+                await dir.close();
               }
-            } finally {
-              await dir.close();
             }
+          } finally {
+            try {
+              runIndex('COMMIT');
+            } catch {
+              /* sem transacao ativa */
+            }
+          }
+
+          if (allHourDirsProcessed && hourDirs.length > 0 && !externalSignal?.aborted) {
+            saveIndex();
+            markDirScanned(searchRoot, prefixo);
+            log.info(
+              `   [TIMING] streaming scan completou ${fileCount} arquivos em ${hourDirs.length} diretorios. Nenhum match.`,
+            );
+            return null;
           }
         }
 
@@ -395,20 +432,6 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
       });
 
       const resultado = await raceToFirstResult(promessas);
-
-      if (resultado) {
-        for (const prefixo of prefixosUnicos) {
-          const fullPath = path.join(searchRoot, prefixo);
-          try {
-            await fs.stat(fullPath);
-            if (!isDirScanned(searchRoot, prefixo)) {
-              markDirScanned(searchRoot, prefixo);
-            }
-          } catch {
-            /* Diretório não existe, ignora */
-          }
-        }
-      }
 
       log.info(`   [TIMING] Busca local resolvida em ${(performance.now() - t0).toFixed(0)}ms`);
 

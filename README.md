@@ -39,8 +39,8 @@ Aplicação web containerizada para busca unificada de arquivos de áudio/docume
 
 - **Busca unificada S3 → local**: Tenta o S3 primeiro; se falhar ou não encontrar, busca nos diretórios locais automaticamente.
 - **SSE streaming de progresso**: Backend emite eventos `progress`/`result` em tempo real via Server-Sent Events; frontend lê via `ReadableStream`.
-- **Streaming readdir (fast path)**: Usa `fs.opendir` + `dir.read()` em batches — encontra o arquivo sem carregar todos os entries do diretório (testado com 48K+ arquivos). Termina imediatamente ao encontrar match.
-- **Pula varredura local se data já indexada**: `isDirScanned` (TTL 1h) executa antes do readdir e do findFiles — evita ambas as fases se a data já foi varrida.
+- **Streaming readdir (fast path)**: Usa `fs.opendir` + `dir.read()` em batches — lê o hour dir inteiro coletando todos os matches sem carregar todos os entries na memória (testado com 48K+ arquivos). Indexa todos os arquivos durante o stream com batch commit a cada 5.000. Se processar todos os hour dirs sem match, pula fases seguintes e marca data como escaneada.
+- **Pula varredura local se data já indexada**: `isDirScanned` (TTL 1h) executa antes do streaming. Se a data já foi completamente escaneada (via streaming completo ou findFiles), pula todas as fases de busca local.
 - **URLs assinadas**: Links temporários de 1 hora sem expor credenciais AWS.
 - **Fallback resiliente**: Falha de rede no S3 não quebra o fluxo — o fallback local é executado mesmo com erro.
 - **Autenticação JWT**: Login com access token em memória + refresh token em cookie httpOnly (rotação a cada uso).
@@ -57,6 +57,7 @@ Aplicação web containerizada para busca unificada de arquivos de áudio/docume
 - **Cache Redis por prefixo S3**: Listagens S3 cacheadas por prefixo (TTL 300s), evitando chamadas repetidas ao bucket para arquivos na mesma data. Fallback silencioso se Redis indisponível.
 - **Dedup de buscas concorrentes**: Buscas idênticas aguardam a Promise existente em vez de duplicar requisições.
 - **Timeouts por fase**: Tempos separados para readdir rápido (240s) e findFiles (300s), com timeout global de 900s. Cada fase tem seu próprio AbortController.
+- **Batch indexing durante streaming**: A cada 5.000 arquivos lidos, o índice SQLite é commitado em lote — evita crescimento excessivo de memória e garante persistência incremental.
 
 ---
 
@@ -99,11 +100,15 @@ graph TD
             IDX -->|encontrou| RJSON["Resposta JSON"]
             IDX -->|não encontrou| DATA_CHECK["isDirScanned?<br/>(TTL 1h)"]
             DATA_CHECK -->|já varrido| RJSON
-            DATA_CHECK -->|não varrido| READDIR["readdir streaming<br/>fs.opendir + dir.read()"]
+            DATA_CHECK -->|não varrido| READDIR["streaming opendir<br/>indexa + busca"]
             READDIR -->|encontrou| RJSON
-            READDIR -->|não encontrou| LOCAL["findFiles<br/>index on-the-fly"]
+            READDIR -->|completo sem match| SCANNED["marca scanned"]
+            READDIR -->|incompleto| QUICK["quickReaddirSearch<br/>depth 1"]
+            QUICK -->|encontrou| RJSON
+            QUICK -->|não encontrou| FINDFILES["findFiles depth 3<br/>index on-the-fly"]
+            FINDFILES -->|encontrou/não| RJSON
+            SCANNED --> RJSON
             S3 -->|URL assinada 1h| RJSON["Resposta JSON"]
-            LOCAL -->|/download-local| RJSON
         end
 
         subgraph "Admin"
