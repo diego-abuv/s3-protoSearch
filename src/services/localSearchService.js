@@ -344,7 +344,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
               }
             }
           } finally {
-            runIndex('COMMIT');
+            try { runIndex('COMMIT'); } catch { /* sem transacao ativa */ }
           }
 
           if (allHourDirsProcessed && hourDirs.length > 0 && !externalSignal?.aborted) {
