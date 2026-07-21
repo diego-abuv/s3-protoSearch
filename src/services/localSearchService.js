@@ -238,9 +238,14 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
         const tStat = performance.now();
         try {
           await fs.stat(fullPath);
-          log.info(`   [TIMING] Diretório OK (${(performance.now() - tStat).toFixed(0)}ms)`);
+          log.info(`   [TIMING] ${prefixo}: OK (${(performance.now() - tStat).toFixed(0)}ms)`);
         } catch {
-          log.info(`   [TIMING] Diretório inacessível (${(performance.now() - tStat).toFixed(0)}ms)`);
+          log.info(`   [TIMING] ${prefixo}: inacessível (${(performance.now() - tStat).toFixed(0)}ms)`);
+          return null;
+        }
+
+        if (isDirScanned(searchRoot, prefixo, 1)) {
+          log.info(`   [SKIP] ${prefixo} já indexado há menos de 1h. Pulando readdir + scan.`);
           return null;
         }
 
@@ -271,11 +276,6 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
           }
         }
 
-        if (isDirScanned(searchRoot, prefixo, 1)) {
-          log.info(`   [SKIP] ${prefixo} já indexado há menos de 1h. Pulando readdir + scan.`);
-          return null;
-        }
-
         if (!externalSignal?.aborted) {
           let hourDirs;
           try {
@@ -303,23 +303,27 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
               try {
                 let entry;
                 const fastMatches = [];
-                while ((entry = await dir.read()) !== null) {
-                  if (externalSignal?.aborted) break;
-                  if (entry.isDirectory()) continue;
-                  const nomeBase = path.parse(entry.name).name.toLowerCase();
-                  const protocolNumber = String(parseInt((nomeBase.match(/^\d+/) || [nomeBase])[0], 10));
-                  runIndex(
-                    `INSERT OR IGNORE INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)`,
-                    [protocolNumber, path.join(hourDir, entry.name), entry.name, searchRoot],
-                  );
-                  fileCount++;
-                  if (nomeBase.includes(termoBuscado)) {
-                    fastMatches.push(entry);
+                try {
+                  while ((entry = await dir.read()) !== null) {
+                    if (externalSignal?.aborted) break;
+                    if (entry.isDirectory()) continue;
+                    const nomeBase = path.parse(entry.name).name.toLowerCase();
+                    const protocolNumber = String(parseInt((nomeBase.match(/^\d+/) || [nomeBase])[0], 10));
+                    runIndex(
+                      `INSERT OR IGNORE INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)`,
+                      [protocolNumber, path.join(hourDir, entry.name), entry.name, searchRoot],
+                    );
+                    fileCount++;
+                    if (nomeBase.includes(termoBuscado)) {
+                      fastMatches.push(entry);
+                    }
+                    if (fileCount % 5000 === 0) {
+                      runIndex('COMMIT');
+                      runIndex('BEGIN TRANSACTION');
+                    }
                   }
-                  if (fileCount % 5000 === 0) {
-                    runIndex('COMMIT');
-                    runIndex('BEGIN TRANSACTION');
-                  }
+                } catch {
+                  allHourDirsProcessed = false;
                 }
 
                 if (fastMatches.length > 0) {
@@ -355,7 +359,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
             saveIndex();
             markDirScanned(searchRoot, prefixo);
             log.info(
-              `   [TIMING] streaming scan completou ${fileCount} arquivos em ${hourDirs.length} diretorios. Nenhum match.`,
+              `   [TIMING] ${prefixo}: streaming scan completou ${fileCount} arquivos em ${hourDirs.length} diretorios. Nenhum match.`,
             );
             return null;
           }
@@ -372,7 +376,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
           const quickResults = await quickReaddirSearch(fullPath, termoBuscado, quickSignal);
           clearTimeout(quickTimer);
           log.info(
-            `   [TIMING] quickReaddir: ${(performance.now() - tQuick).toFixed(0)}ms (encontrados ${quickResults.length})`,
+            `   [TIMING] ${prefixo}: quickReaddir: ${(performance.now() - tQuick).toFixed(0)}ms (encontrados ${quickResults.length})`,
           );
 
           if (quickResults.length > 0) {
@@ -406,7 +410,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
           clearTimeout(findTimer);
           saveIndex();
           log.info(
-            `   [TIMING] findFiles: ${(performance.now() - tFind).toFixed(0)}ms (indexados ${foundFiles.length} arquivos)`,
+            `   [TIMING] ${prefixo}: findFiles: ${(performance.now() - tFind).toFixed(0)}ms (indexados ${foundFiles.length} arquivos)`,
           );
 
           if (foundFiles.length === 0) {
@@ -434,8 +438,6 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
       const resultado = await raceToFirstResult(promessas);
 
       log.info(`   [TIMING] Busca local resolvida em ${(performance.now() - t0).toFixed(0)}ms`);
-
-      setImmediate(() => saveIndex());
 
       if (resultado) {
         log.section('Busca local finalizada com sucesso');

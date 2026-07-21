@@ -153,4 +153,62 @@ describe('findFileAndGetSignedUrl', () => {
     expect(result.status.s3).toBe('ok');
     expect(cacheSet).toHaveBeenCalled();
   });
+
+  it('popula cache mesmo quando resultado e null (para evitar repeticoes)', async () => {
+    cacheGet.mockResolvedValue(null);
+    findInS3.mockResolvedValue(null);
+    queryIndex.mockReturnValue([]);
+    findLocally.mockResolvedValue(null);
+
+    const result = await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
+
+    expect(result.arquivos).toBeNull();
+    expect(cacheSet).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ arquivos: null }),
+      expect.any(Number),
+    );
+  });
+
+  it('deduplica buscas concorrentes com mesmo cacheKey', async () => {
+    cacheGet.mockResolvedValue(null);
+    findInS3.mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve(null), 100)));
+    queryIndex.mockReturnValue([]);
+    findLocally.mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve(null), 100)));
+
+    const promise1 = findFileAndGetSignedUrl('2024/01/02', 'protocolo');
+    const promise2 = findFileAndGetSignedUrl('2024/01/02', 'protocolo');
+
+    const [result1, result2] = await Promise.all([promise1, promise2]);
+
+    expect(result1.arquivos).toBeNull();
+    expect(result2.arquivos).toBeNull();
+    expect(findInS3).toHaveBeenCalledTimes(1);
+  });
+
+  it('usa cache de busca unificada para resultado null (evita nova consulta)', async () => {
+    cacheGet
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        arquivos: null,
+        status: { s3: 'nao_encontrado', local: 'nao_encontrado' },
+      });
+    findInS3.mockResolvedValue(null);
+    queryIndex.mockReturnValue([]);
+    findLocally.mockResolvedValue(null);
+
+    await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
+
+    cacheGet.mockImplementation(() =>
+      Promise.resolve({
+        arquivos: null,
+        status: { s3: 'nao_encontrado', local: 'nao_encontrado' },
+      }),
+    );
+
+    const result2 = await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
+
+    expect(result2.arquivos).toBeNull();
+    expect(findInS3).toHaveBeenCalledTimes(1);
+  });
 });

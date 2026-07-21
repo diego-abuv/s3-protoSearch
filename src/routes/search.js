@@ -35,6 +35,10 @@ export function createSearchRoutes(searchableService) {
     const start = performance.now();
     const ctxLogger = createContextLogger({ username: req.user.username });
 
+    res.on('finish', () => {
+      ctxLogger.info(`Response: ${res.statusCode} ${req.method} ${req.originalUrl}`);
+    });
+
     const onProgress = wantsSSE
       ? (data) => {
           try {
@@ -61,6 +65,33 @@ export function createSearchRoutes(searchableService) {
         onProgress,
       );
       const elapsed = ((performance.now() - start) / 1000).toFixed(2);
+
+      if (!resultado) {
+        logAudit({
+          user_id: req.user.id,
+          username: req.user.username,
+          action: 'search',
+          target: `${pasta}/${nomeProtocolo}`,
+          details: `encontrados=0, tempo=${elapsed}s, s3=nao_consultado, local=nao_consultado`,
+          ip: req.ip,
+        });
+        if (wantsSSE) {
+          res.write(
+            `event: result\ndata: ${JSON.stringify({
+              encontrado: false,
+              arquivos: null,
+              status: { s3: 'nao_consultado', local: 'nao_consultado' },
+            })}\n\n`,
+          );
+          res.end();
+          return;
+        }
+        return res.status(404).json({
+          encontrado: false,
+          arquivos: null,
+          status: { s3: 'nao_consultado', local: 'nao_consultado' },
+        });
+      }
 
       const found = resultado.arquivos && resultado.arquivos.length > 0;
       const count = resultado.arquivos?.length || 0;

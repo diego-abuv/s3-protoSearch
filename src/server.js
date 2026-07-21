@@ -5,12 +5,16 @@ import { logger } from './utils/logger.js';
 
 process.on('unhandledRejection', (reason) => {
   logger.error('Unhandled rejection:', reason);
+  process.exitCode = 1;
 });
 process.on('uncaughtException', (err) => {
   logger.error('Uncaught exception:', err);
+  process.exitCode = 1;
 });
 process.on('exit', (code) => {
-  console.error(`[FATAL] Processo encerrou com código ${code}`);
+  if (code !== 0) {
+    console.error(`[FATAL] Processo encerrou com código ${code}`);
+  }
 });
 
 function getLocalIp() {
