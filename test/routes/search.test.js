@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 
 vi.hoisted(() => {
   process.env.JWT_SECRET = 'test-jwt-secret';
+  process.env.API_KEY = 'test-api-key';
 });
 
 vi.mock('express-rate-limit', () => ({
@@ -140,6 +141,138 @@ describe('Search Routes', () => {
           target: '2024/01/02/12345',
         }),
       );
+    });
+
+    it('autentica via x-api-key header', async () => {
+      mockService.findFileAndGetSignedUrl.mockResolvedValue({
+        arquivos: [{ url: 'url', nome: 'file.mp3' }],
+        status: { s3: 'ok', local: 'nao_consultado' },
+      });
+
+      const res = await request(app)
+        .post('/buscar-arquivo')
+        .set('x-api-key', 'test-api-key')
+        .send({ pasta: '2024/01/02', nomeProtocolo: '12345' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.encontrado).toBe(true);
+    });
+
+    it('autentica via x-api-key e retorna 404 sem resultados', async () => {
+      mockService.findFileAndGetSignedUrl.mockResolvedValue({
+        arquivos: null,
+        status: { s3: 'nao_encontrado', local: 'nao_encontrado' },
+      });
+
+      const res = await request(app)
+        .post('/buscar-arquivo')
+        .set('x-api-key', 'test-api-key')
+        .send({ pasta: '2024/01/02', nomeProtocolo: 'inexistente' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.encontrado).toBe(false);
+    });
+
+    it('rejeita x-api-key invalido', async () => {
+      const res = await request(app)
+        .post('/buscar-arquivo')
+        .set('x-api-key', 'invalid-key')
+        .send({ pasta: '2024/01/02', nomeProtocolo: '12345' });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('lida com busca demorada sem crash (simula 502/timeout)', async () => {
+      const slowPromise = new Promise((resolve) => {
+        setTimeout(() => {
+          resolve({
+            arquivos: null,
+            status: { s3: 'nao_encontrado', local: 'nao_encontrado' },
+          });
+        }, 2000);
+      });
+      mockService.findFileAndGetSignedUrl.mockReturnValue(slowPromise);
+
+      const start = Date.now();
+      const res = await request(app)
+        .post('/buscar-arquivo')
+        .set('Authorization', `Bearer ${makeToken()}`)
+        .send({ pasta: '2024/01/02', nomeProtocolo: 'lento' });
+
+      const elapsed = Date.now() - start;
+      expect(res.status).toBe(404);
+      expect(res.body.encontrado).toBe(false);
+      expect(elapsed).toBeGreaterThanOrEqual(1900);
+    });
+
+    it('lida com resultado null do servico (sem arquivos nem status)', async () => {
+      mockService.findFileAndGetSignedUrl.mockResolvedValue(null);
+
+      const res = await request(app)
+        .post('/buscar-arquivo')
+        .set('Authorization', `Bearer ${makeToken()}`)
+        .send({ pasta: '2024/01/02', nomeProtocolo: '12345' });
+
+      expect(res.status).toBe(404);
+    });
+
+    it('suporta SSE com progresso e resultado', async () => {
+      const buscaComSSE = vi.fn().mockImplementation(async (pasta, nome, log, onProgress) => {
+        onProgress?.({ type: 's3_start', message: 'Buscando no S3...' });
+        await new Promise((r) => setTimeout(r, 10));
+        onProgress?.({ type: 's3_done', message: 'S3 concluido' });
+        return {
+          arquivos: [{ downloadUrl: '/download-local?file=/path/file.mp3', nomeParaDownload: 'file.mp3' }],
+          status: { s3: 'ok', local: 'nao_consultado' },
+        };
+      });
+      mockService.findFileAndGetSignedUrl.mockImplementation(buscaComSSE);
+
+      const res = await request(app)
+        .post('/buscar-arquivo')
+        .set('Authorization', `Bearer ${makeToken()}`)
+        .set('Accept', 'text/event-stream')
+        .send({ pasta: '2024/01/02', nomeProtocolo: '12345' });
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('text/event-stream');
+      expect(res.text).toContain('event: progress');
+      expect(res.text).toContain('event: result');
+      expect(res.text).toContain('"encontrado":true');
+    });
+
+    it('SSE retorna erro quando servico lanca excecao', async () => {
+      const originalError = console.error;
+      console.error = vi.fn();
+
+      mockService.findFileAndGetSignedUrl.mockRejectedValue(new Error('Falha interna SSE'));
+
+      const res = await request(app)
+        .post('/buscar-arquivo')
+        .set('Authorization', `Bearer ${makeToken()}`)
+        .set('Accept', 'text/event-stream')
+        .send({ pasta: '2024/01/02', nomeProtocolo: '12345' });
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('text/event-stream');
+      expect(res.text).toContain('event: result');
+      expect(res.text).toContain('encontrado');
+      expect(res.text).toContain('Falha interna SSE');
+
+      console.error = originalError;
+    });
+
+    it('cobre caso de resultado null do servico (regressao 502)', async () => {
+      mockService.findFileAndGetSignedUrl.mockResolvedValue(null);
+
+      const res = await request(app)
+        .post('/buscar-arquivo')
+        .set('x-api-key', 'test-api-key')
+        .send({ pasta: '2024/01/02', nomeProtocolo: '12345' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.encontrado).toBe(false);
+      expect(res.body.arquivos).toBeNull();
     });
   });
 });
