@@ -482,6 +482,10 @@ describe('Admin Routes', () => {
         expect.stringContaining('created_at >= ?'),
         expect.arrayContaining(['2026-01-01']),
       );
+      expect(sqlite.all).toHaveBeenCalledWith(
+        expect.stringContaining("created_at < datetime(?, '+1 day')"),
+        expect.arrayContaining(['2026-12-31']),
+      );
     });
 
     it('combina multiplos filtros', async () => {
@@ -544,6 +548,17 @@ describe('Admin Routes', () => {
       sqlite.all.mockReturnValue([]);
       await request(app).get('/admin/audit/export').set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(sqlite.all).toHaveBeenCalledWith(expect.stringContaining('10000'), expect.any(Array));
+    });
+
+    it('aplica filtro to no export', async () => {
+      sqlite.all.mockReturnValue([]);
+      await request(app)
+        .get('/admin/audit/export?to=2026-12-31')
+        .set('Authorization', `Bearer ${makeAdminToken()}`);
+      expect(sqlite.all).toHaveBeenCalledWith(
+        expect.stringContaining('created_at <= ?'),
+        expect.arrayContaining(['2026-12-31']),
+      );
     });
   });
 

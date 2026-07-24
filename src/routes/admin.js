@@ -7,8 +7,8 @@ import { validatePassword, validateUsername, sanitizeInput } from '../utils/vali
 
 const adminLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 20,
-  standardHeaders: false,
+  max: 300,
+  standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Muitas requisições. Tente novamente.' },
 });
@@ -218,7 +218,7 @@ export function createAdminRoutes() {
       params.push(req.query.from);
     }
     if (req.query.to) {
-      whereClause += ' AND created_at <= ?';
+      whereClause += " AND created_at < datetime(?, '+1 day')";
       params.push(req.query.to);
     }
 

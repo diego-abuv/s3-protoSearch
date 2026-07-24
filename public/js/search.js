@@ -29,6 +29,8 @@ function addProgressStep(message) {
   progressDiv.appendChild(tmpl);
 }
 
+let abortController = null;
+
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   event.stopPropagation();
@@ -40,6 +42,7 @@ form.addEventListener('submit', async (event) => {
   const nomeProtocolo = document.getElementById('nomeProtocolo').value;
   const inicio = performance.now();
 
+  abortController = new AbortController();
   btnBuscar.disabled = true;
   btnText.textContent = 'Buscando...';
   btnSpinner.classList.remove('d-none');
@@ -50,6 +53,16 @@ form.addEventListener('submit', async (event) => {
   );
   addProgressStep('Iniciando busca...');
 
+  const cancelBtn = resultadoDiv.querySelector('.btn-cancel-search');
+  if (cancelBtn) {
+    cancelBtn.addEventListener('click', () => {
+      abortController.abort();
+      if (window.__searchToken) {
+        fetch('/cancel-search/' + window.__searchToken, { method: 'POST' }).catch(() => {});
+      }
+    });
+  }
+
   const duracao = () => ((performance.now() - inicio) / 1000).toFixed(2);
 
   try {
@@ -57,6 +70,7 @@ form.addEventListener('submit', async (event) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
       body: JSON.stringify({ pasta, nomeProtocolo }),
+      signal: abortController.signal,
     });
 
     if (response.headers.get('content-type')?.includes('text/event-stream')) {
@@ -80,7 +94,9 @@ form.addEventListener('submit', async (event) => {
           } else if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
-              if (eventType === 'progress') {
+              if (eventType === 'searchToken') {
+                window.__searchToken = data.token;
+              } else if (eventType === 'progress') {
                 addProgressStep(data.message);
               } else if (eventType === 'result') {
                 finalData = data;
@@ -165,19 +181,33 @@ form.addEventListener('submit', async (event) => {
     resultadoDiv.innerHTML = '';
     resultadoDiv.appendChild(buildResultHtml(data, duracao()));
   } catch (err) {
-    resultadoDiv.innerHTML = `
-      <div class="result-card error">
-        <div class="d-flex align-items-start gap-3">
-          <div class="result-icon error-icon">!</div>
-          <div class="flex-grow-1 min-w-0">
-            <strong class="fs-6">Falha na requisição</strong>
-            <p class="mb-1 text-secondary small">${err.name}: ${escapeHtml(err.message)}</p>
+    if (err.name === 'AbortError' || abortController?.signal.aborted) {
+      resultadoDiv.innerHTML = `
+        <div class="result-card not-found">
+          <div class="d-flex align-items-start gap-3">
+            <div class="result-icon not-found-icon">&#10007;</div>
+            <div class="flex-grow-1 min-w-0">
+              <strong class="fs-6">Busca cancelada</strong>
+              <p class="mb-1 text-secondary small">A consulta foi cancelada pelo usuário.</p>
+            </div>
           </div>
-        </div>
-      </div>`;
+        </div>`;
+    } else {
+      resultadoDiv.innerHTML = `
+        <div class="result-card error">
+          <div class="d-flex align-items-start gap-3">
+            <div class="result-icon error-icon">!</div>
+            <div class="flex-grow-1 min-w-0">
+              <strong class="fs-6">Falha na requisição</strong>
+              <p class="mb-1 text-secondary small">${err.name}: ${escapeHtml(err.message)}</p>
+            </div>
+          </div>
+        </div>`;
+    }
   } finally {
     btnBuscar.disabled = false;
     btnText.textContent = 'Buscar';
     btnSpinner.classList.add('d-none');
+    abortController = null;
   }
 });

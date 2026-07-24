@@ -9,7 +9,14 @@
   <link rel="stylesheet" href="/style.css">
   <script src="/vendor/chart.min.js"></script>
 </head>
-<body>
+<body id="admin-page">
+
+  <div id="accessOverlay" class="access-overlay">
+    <div class="access-overlay-content">
+      <div class="access-overlay-icon">&#128274;</div>
+      <div class="access-overlay-message" id="accessMessage">Verificando acesso...</div>
+    </div>
+  </div>
 
   <nav class="navbar-glass">
     <div class="user-menu">
@@ -193,11 +200,12 @@
                   <th>Data</th>
                   <th>Usuario</th>
                   <th>Acao</th>
+                  <th>Resultado</th>
                   <th>Detalhes</th>
                 </tr>
               </thead>
               <tbody id="auditTableBody">
-                <tr><td colspan="4" class="text-center text-secondary py-3">Carregando...</td></tr>
+                <tr><td colspan="5" class="text-center text-secondary py-3">Carregando...</td></tr>
               </tbody>
             </table>
           </div>
