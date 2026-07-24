@@ -5,11 +5,11 @@ import { logger } from './utils/logger.js';
 
 process.on('unhandledRejection', (reason) => {
   logger.error('Unhandled rejection:', reason);
-  process.exitCode = 1;
+  process.exit(1);
 });
 process.on('uncaughtException', (err) => {
   logger.error('Uncaught exception:', err);
-  process.exitCode = 1;
+  process.exit(1);
 });
 process.on('exit', (code) => {
   if (code !== 0) {

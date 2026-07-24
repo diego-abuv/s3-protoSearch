@@ -71,6 +71,21 @@ export function runIndex(sql, params = []) {
   getIndexDb().run(sql, params);
 }
 
+export async function beginTransaction() {
+  for (;;) {
+    try {
+      getIndexDb().run('BEGIN');
+      return;
+    } catch {
+      await new Promise((r) => setTimeout(r, 10));
+    }
+  }
+}
+
+export function commitTransaction() {
+  getIndexDb().run('COMMIT');
+}
+
 export function isDirScanned(searchRoot, dirPath, maxAgeHours = 24) {
   if (!ready) return false;
   const stmt = getIndexDb().prepare(

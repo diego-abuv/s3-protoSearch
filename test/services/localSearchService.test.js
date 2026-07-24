@@ -15,9 +15,11 @@ vi.mock('../../src/db/indexDb.js', () => ({
   saveIndex: vi.fn(),
   isDirScanned: vi.fn().mockReturnValue(false),
   markDirScanned: vi.fn(),
+  beginTransaction: vi.fn().mockResolvedValue(undefined),
+  commitTransaction: vi.fn(),
 }));
 
-import { runIndex, saveIndex, isDirScanned, markDirScanned } from '../../src/db/indexDb.js';
+import { runIndex, saveIndex, isDirScanned, markDirScanned, beginTransaction, commitTransaction } from '../../src/db/indexDb.js';
 
 async function flushSetImmediate() {
   for (let i = 0; i < 5; i++) {
