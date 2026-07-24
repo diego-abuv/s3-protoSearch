@@ -211,4 +211,59 @@ describe('findFileAndGetSignedUrl', () => {
     expect(result2.arquivos).toBeNull();
     expect(findInS3).toHaveBeenCalledTimes(1);
   });
+
+  it('retorna cancelado:true quando externalSignal abortado', async () => {
+    const externalAbort = new AbortController();
+
+    cacheGet.mockResolvedValue(null);
+    findInS3.mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve(null), 50)));
+    queryIndex.mockReturnValue([]);
+    findLocally.mockResolvedValue(null);
+
+    const searchPromise = findFileAndGetSignedUrl('2024/01/02', 'protocolo', undefined, undefined, externalAbort.signal);
+
+    // yield so doSearch attaches the event listener before we abort
+    await new Promise((r) => setImmediate(r));
+
+    externalAbort.abort();
+
+    const result = await searchPromise;
+
+    expect(result.arquivos).toBeNull();
+    expect(result.status.cancelado).toBe(true);
+    expect(cacheSet).not.toHaveBeenCalled();
+  });
+
+  it('usa NULL_CACHE_TTL=15 para resultado null', async () => {
+    cacheGet.mockResolvedValue(null);
+    findInS3.mockResolvedValue(null);
+    queryIndex.mockReturnValue([]);
+    findLocally.mockResolvedValue(null);
+
+    await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
+
+    expect(cacheSet).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ arquivos: null }),
+      15,
+    );
+  });
+
+  it('gera variantes de data na consulta ao indice', async () => {
+    findInS3.mockResolvedValue(null);
+    queryIndex.mockReturnValue([]);
+    findLocally.mockResolvedValue(null);
+
+    await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
+
+    expect(queryIndex).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.arrayContaining([
+        expect.stringMatching(/%\/2024\/1\/2\/%/),
+        expect.stringMatching(/%\/2024\/1\/02\/%/),
+        expect.stringMatching(/%\/2024\/01\/02\/%/),
+        expect.stringMatching(/%\/2024\/01\/2\/%/),
+      ]),
+    );
+  });
 });

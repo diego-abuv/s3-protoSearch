@@ -792,4 +792,28 @@ input[type="date"].is-invalid {
   color: inherit !important;
 }
 
+/* ── Admin access overlay ───────────────────────── */
+.access-overlay {
+  position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 99999;
+  background: #0f0f1a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.access-overlay-content { text-align: center; padding: 2rem; }
+.access-overlay-icon { font-size: 3rem; margin-bottom: 1rem; color: var(--bs-warning); }
+.access-overlay-message { font-size: 1.1rem; color: var(--bs-light); }
+
+#admin-page.access-granted .access-overlay { display: none; }
+
+#admin-page:not(.access-granted) nav,
+#admin-page:not(.access-granted) main,
+#admin-page:not(.access-granted) footer,
+#admin-page:not(.access-granted) .modal,
+#admin-page:not(.access-granted) .modal-backdrop,
+#admin-page:not(.access-granted) .toast-container,
+#admin-page:not(.access-granted) .theme-toggle {
+  display: none !important;
+}
 

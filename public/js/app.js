@@ -2,6 +2,12 @@
 (async () => {
   const user = await Auth.checkSession();
   if (!user) {
+    const isAdminPage = window.location.pathname === '/admin.html';
+    const msg = document.getElementById('accessMessage');
+    if (isAdminPage && msg) {
+      msg.textContent = 'Você deve estar logado para acessar esta página. Redirecionando para o login...';
+      await new Promise(r => setTimeout(r, 1500));
+    }
     window.location.href = '/login.html?redirect=' + encodeURIComponent(window.location.pathname);
     return;
   }

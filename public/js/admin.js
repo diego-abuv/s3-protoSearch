@@ -1,4 +1,5 @@
 // admin.js — Painel de administracao
+
 const API = {
   async get(url) {
     const res = await Auth.authFetch(url);
@@ -387,6 +388,19 @@ function badgeForAction(action) {
   return ACTION_BADGES[action] || 'badge-outline-secondary';
 }
 
+function resultBadge(details) {
+  if (!details) return '<span class="text-secondary">-</span>';
+  if (details.includes('cancelado=1')) return '<span class="badge badge-outline-secondary">Cancelado</span>';
+  const m = details.match(/encontrados=(\d+)/);
+  if (m) {
+    const count = parseInt(m[1], 10);
+    if (count > 0) return '<span class="badge badge-outline-success">Encontrado</span>';
+    return '<span class="badge badge-outline-warning">Nao encontrado</span>';
+  }
+  if (details.startsWith('erro=')) return '<span class="badge badge-outline-danger">Erro</span>';
+  return '<span class="text-secondary">-</span>';
+}
+
 const ACTION_LABELS = {
   search: 'Busca de arquivo',
   login: 'Login',
@@ -437,6 +451,7 @@ async function loadAudit(append) {
         <td class="text-nowrap">${escapeHtml(formatToSP(l.created_at))}</td>
         <td>${escapeHtml(l.username)}</td>
         <td><span class="badge ${badgeForAction(l.action)}">${escapeHtml(labelForAction(l.action))}</span></td>
+        <td>${resultBadge(l.details)}</td>
         <td><button class="btn btn-sm audit-info-btn" data-log='${escapeHtml(JSON.stringify(l))}' title="Ver detalhes"><i class="info-i">i</i></button></td>
       </tr>
     `,
@@ -450,13 +465,13 @@ async function loadAudit(append) {
     }
 
     if (!data.logs.length) {
-      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-secondary py-3">Nenhum log</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary py-3">Nenhum log</td></tr>';
     }
 
     const btnMore = document.getElementById('btnCarregarMais');
     btnMore.classList.toggle('d-none', data.logs.length < AUDIT_LIMIT);
   } catch (_e) {
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-3">Erro ao carregar</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">Erro ao carregar</td></tr>';
   }
 }
 
@@ -593,6 +608,17 @@ document.getElementById('auditTableBody').addEventListener('click', (e) => {
 });
 
 // ── Init ───────────────────────────────────────────────
-document.addEventListener('session-ready', async () => {
+document.addEventListener('session-ready', async (event) => {
+  const user = event.detail;
+  if (user.role !== 'admin') {
+    const msg = document.getElementById('accessMessage');
+    msg.textContent = 'Você não tem permissão para acessar esta página. Redirecionando para a tela de busca...';
+    setTimeout(() => { window.location.href = '/'; }, 10000);
+    return;
+  }
+  document.getElementById('admin-page').classList.add('access-granted');
   await Promise.all([loadStats(), loadChart(), loadUsers(), loadAudit(false)]);
+
+  setInterval(() => { loadStats(); loadChart(); }, 30000);
+  setInterval(() => { loadUsers(); auditOffset = 0; loadAudit(false); }, 60000);
 });

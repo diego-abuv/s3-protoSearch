@@ -7,12 +7,12 @@ import { queryIndex } from '../db/indexDb.js';
 import { cacheGet, cacheSet } from '../utils/cache.js';
 
 const GLOBAL_TIMEOUT_MS = 900_000;
-const NULL_CACHE_TTL = 300;
+const NULL_CACHE_TTL = 15;
 const FOUND_CACHE_TTL = 300;
 
 const activeSearches = new Map();
 
-export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger, onProgress) {
+export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger, onProgress, externalSignal) {
   const cacheKey = `busca:${pasta}:${nomeProtocolo}`;
   const cached = await cacheGet(cacheKey);
   if (cached) {
@@ -27,7 +27,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
     return activeSearches.get(cacheKey);
   }
 
-  const searchPromise = doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey);
+  const searchPromise = doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey, externalSignal);
   activeSearches.set(cacheKey, searchPromise);
 
   try {
@@ -37,11 +37,21 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
   }
 }
 
-async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey) {
+async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey, externalSignal) {
   const inicio = Date.now();
   const globalAbort = new AbortController();
   const globalSignal = globalAbort.signal;
   const globalTimer = setTimeout(() => globalAbort.abort(), GLOBAL_TIMEOUT_MS);
+
+  if (externalSignal) {
+    externalSignal.addEventListener(
+      'abort',
+      () => {
+        if (!globalSignal.aborted) globalAbort.abort();
+      },
+      { once: true },
+    );
+  }
 
   log.section('INICIANDO BUSCA UNIFICADA');
 
@@ -75,11 +85,22 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey) {
 
     onProgress?.({ type: 'index_check', message: 'Verificando índice local...' });
     const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase();
+    const [ano, mes, dia] = pasta.split('/');
+    const pastaVariants = [
+      `${ano}/${String(parseInt(mes, 10))}/${String(parseInt(dia, 10))}`,
+      `${ano}/${String(parseInt(mes, 10))}/${dia.padStart(2, '0')}`,
+      `${ano}/${mes.padStart(2, '0')}/${dia.padStart(2, '0')}`,
+      `${ano}/${mes.padStart(2, '0')}/${String(parseInt(dia, 10))}`,
+    ];
+    const pastaClauses = pastaVariants.map(() => 'file_path LIKE ?').join(' OR ');
+    const pastaParams = pastaVariants.map((v) => `%/${v}/%`);
+
     try {
       const protocolPrefix = String(parseInt((termoBuscado.match(/^\d+/) || [termoBuscado])[0], 10));
-      const idxResults = queryIndex(`SELECT file_path, file_name FROM file_index WHERE protocol_number LIKE ? || '%'`, [
-        protocolPrefix,
-      ]);
+      const idxResults = queryIndex(
+        `SELECT file_path, file_name FROM file_index WHERE protocol_number LIKE ? || '%' AND (${pastaClauses})`,
+        [protocolPrefix, ...pastaParams],
+      );
 
       if (idxResults && idxResults.length > 0) {
         log.success(`Arquivo(s) encontrado(s) no índice local (${idxResults.length}).`);
@@ -99,9 +120,10 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey) {
     }
 
     try {
-      const likeResults = queryIndex(`SELECT file_path, file_name FROM file_index WHERE file_name LIKE ? LIMIT 20`, [
-        `%${termoBuscado}%`,
-      ]);
+      const likeResults = queryIndex(
+        `SELECT file_path, file_name FROM file_index WHERE file_name LIKE ? AND (${pastaClauses}) LIMIT 20`,
+        [`%${termoBuscado}%`, ...pastaParams],
+      );
       if (likeResults && likeResults.length > 0) {
         log.success(`Arquivo(s) encontrado(s) no índice local por substring (${likeResults.length}).`);
         onProgress?.({
@@ -148,6 +170,11 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey) {
     }
 
     const duracao = ((Date.now() - inicio) / 1000).toFixed(2);
+    if (globalSignal.aborted) {
+      log.info(`Busca cancelada pelo usuário.`);
+      log.section(`BUSCA CANCELADA (${duracao}s)`);
+      return { arquivos: null, status: { s3: s3Status, local: localStatus, cancelado: true } };
+    }
     log.destaque(`FALHA: Arquivo não encontrado em nenhuma fonte.`);
     log.section(`BUSCA FINALIZADA (${duracao}s)`);
     const nullResult = { arquivos: null, status: { s3: s3Status, local: localStatus } };

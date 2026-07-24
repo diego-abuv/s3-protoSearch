@@ -408,17 +408,17 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
           const tFind = performance.now();
           const foundFiles = await findFiles(fullPath, termoBuscado, findSignal, 3, searchRoot);
           clearTimeout(findTimer);
-          saveIndex();
+          if (!externalSignal?.aborted) saveIndex();
           log.info(
             `   [TIMING] ${prefixo}: findFiles: ${(performance.now() - tFind).toFixed(0)}ms (indexados ${foundFiles.length} arquivos)`,
           );
 
           if (foundFiles.length === 0) {
-            markDirScanned(searchRoot, prefixo);
+            if (!externalSignal?.aborted) markDirScanned(searchRoot, prefixo);
             return null;
           }
 
-          markDirScanned(searchRoot, prefixo);
+          if (!externalSignal?.aborted) markDirScanned(searchRoot, prefixo);
           shareAbort.abort();
           return foundFiles.map((fp) => {
             const relativePath = path.relative(relativeBasePath, fp);

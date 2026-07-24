@@ -24,7 +24,20 @@ vi.mock('../../src/db/indexDb.js', () => ({
   initIndexDb: vi.fn().mockResolvedValue(undefined),
 }));
 
+vi.mock('../../src/utils/logger.js', () => ({
+  logger: { info: vi.fn(), error: vi.fn(), success: vi.fn(), warn: vi.fn(), section: vi.fn(), destaque: vi.fn() },
+  createContextLogger: vi.fn(() => ({
+    info: vi.fn(),
+    error: vi.fn(),
+    success: vi.fn(),
+    warn: vi.fn(),
+    section: vi.fn(),
+    destaque: vi.fn(),
+  })),
+}));
+
 import { createApp } from '../../src/app.js';
+import crypto from 'node:crypto';
 
 function makeToken() {
   return jwt.sign({ id: 1, username: 'searchuser', role: 'user' }, process.env.JWT_SECRET, { expiresIn: '15m' });
@@ -99,6 +112,7 @@ describe('Search Routes', () => {
         '12345',
         expect.any(Object),
         undefined,
+        expect.any(Object),
       );
     });
 
@@ -274,5 +288,73 @@ describe('Search Routes', () => {
       expect(res.body.encontrado).toBe(false);
       expect(res.body.arquivos).toBeNull();
     });
+
+    it('logga encontrado no finish listener', async () => {
+      mockService.findFileAndGetSignedUrl.mockResolvedValue({
+        arquivos: [{ url: 'url', nome: 'file.mp3' }],
+        status: { s3: 'ok', local: 'nao_consultado' },
+      });
+
+      await request(app)
+        .post('/buscar-arquivo')
+        .set('Authorization', `Bearer ${makeToken()}`)
+        .send({ pasta: '2024/01/02', nomeProtocolo: '12345' });
+
+      const loggerMod = await import('../../src/utils/logger.js');
+      const ctxLogger = loggerMod.createContextLogger.mock.results[0].value;
+      expect(ctxLogger.info).toHaveBeenCalledWith(
+        expect.stringContaining('(encontrado: 1'),
+      );
+    });
+
+    it('logga nao encontrado no finish listener', async () => {
+      mockService.findFileAndGetSignedUrl.mockResolvedValue({
+        arquivos: [],
+        status: { s3: 'sem_resultados', local: 'nao_consultado' },
+      });
+
+      await request(app)
+        .post('/buscar-arquivo')
+        .set('Authorization', `Bearer ${makeToken()}`)
+        .send({ pasta: '2024/01/02', nomeProtocolo: 'inexistente' });
+
+      const loggerMod = await import('../../src/utils/logger.js');
+      const ctxLogger = loggerMod.createContextLogger.mock.results[0].value;
+      expect(ctxLogger.info).toHaveBeenCalledWith(
+        expect.stringContaining('Response: 404 POST /buscar-arquivo (não encontrado'),
+      );
+    });
+
+    it('logga erro no finish listener', async () => {
+      mockService.findFileAndGetSignedUrl.mockRejectedValue(new Error('Falha interna'));
+
+      await request(app)
+        .post('/buscar-arquivo')
+        .set('Authorization', `Bearer ${makeToken()}`)
+        .send({ pasta: '2024/01/02', nomeProtocolo: '12345' });
+
+      const loggerMod = await import('../../src/utils/logger.js');
+      const ctxLogger = loggerMod.createContextLogger.mock.results[0].value;
+      expect(ctxLogger.info).toHaveBeenCalledWith(
+        expect.stringContaining('Response: 500 POST /buscar-arquivo (erro: Falha interna)'),
+      );
+    });
+  });
+
+  describe('POST /cancel-search/:token', () => {
+    it('retorna 401 sem autenticacao', async () => {
+      const res = await request(app).post('/cancel-search/any-token');
+      expect(res.status).toBe(401);
+    });
+
+    it('retorna 404 quando token invalido', async () => {
+      const res = await request(app)
+        .post('/cancel-search/token-invalido')
+        .set('Authorization', `Bearer ${makeToken()}`);
+      expect(res.status).toBe(404);
+      expect(res.body.error).toBe('Busca nao encontrada ou ja finalizada');
+    });
+
+
   });
 });
