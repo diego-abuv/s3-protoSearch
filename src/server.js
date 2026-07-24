@@ -11,6 +11,14 @@ process.on('uncaughtException', (err) => {
   logger.error('Uncaught exception:', err);
   process.exit(1);
 });
+process.on('SIGTERM', () => {
+  logger.info('Servidor encerrando (SIGTERM)');
+  process.exit(0);
+});
+process.on('SIGINT', () => {
+  logger.info('Servidor encerrando (SIGINT)');
+  process.exit(0);
+});
 process.on('exit', (code) => {
   if (code !== 0) {
     console.error(`[FATAL] Processo encerrou com código ${code}`);

@@ -221,9 +221,12 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
       }
 
       try {
-        await fs.access(searchRoot);
+        await Promise.race([
+          fs.access(searchRoot),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+        ]);
       } catch {
-        log.warn(`O caminho de busca "${searchRoot}" não está acessível. Pulando...`);
+        log.warn(`O caminho de busca "${searchRoot}" não está acessível ou excedeu timeout. Pulando...`);
         continue;
       }
 
@@ -253,7 +256,10 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
 
           const tStat = performance.now();
           try {
-            await fs.stat(fullPath);
+            await Promise.race([
+              fs.stat(fullPath),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+            ]);
             log.info(`   [TIMING] ${prefixo}: OK (${(performance.now() - tStat).toFixed(0)}ms)`);
           } catch {
             log.info(`   [TIMING] ${prefixo}: inacessível (${(performance.now() - tStat).toFixed(0)}ms)`);
@@ -269,7 +275,10 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
             if (externalSignal?.aborted) return null;
             const directPath = path.join(fullPath, nomeProtocolo + ext);
             try {
-              await fs.access(directPath);
+              await Promise.race([
+                fs.access(directPath),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+              ]);
               log.success(`   [DIRECT] Arquivo encontrado via acesso direto: ${directPath}`);
 
               shareAbort.abort();

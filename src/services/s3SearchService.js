@@ -2,7 +2,10 @@ import 'dotenv/config';
 import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import https from 'https';
+import dns from 'dns';
 import path from 'path';
+
+const dnsCache = new Map();
 import { logger } from '../utils/logger.js';
 import { withRetry } from '../utils/retry.js';
 import { cacheGet, cacheSet } from '../utils/cache.js';
@@ -18,6 +21,20 @@ const s3Client = new S3Client({
       keepAlive: true,
       maxSockets: 25,
       keepAliveMsecs: 30000,
+      lookup: (hostname, options, callback) => {
+        if (!hostname.includes('amazonaws.com')) {
+          return dns.lookup(hostname, options, callback);
+        }
+        const cached = dnsCache.get(hostname);
+        if (cached && Date.now() - cached.ts < 120000) {
+          return callback(null, cached.ip, cached.family);
+        }
+        dns.resolve4(hostname, (err, addresses) => {
+          if (err) return callback(err);
+          dnsCache.set(hostname, { ip: addresses[0], ts: Date.now(), family: 4 });
+          callback(null, addresses[0], 4);
+        });
+      },
     }),
   }),
 });
@@ -52,8 +69,8 @@ async function fetchS3Listing(prefixo, signal) {
 
     const listResponse = await withRetry(() => s3Client.send(listCommand), {
       label: `ListObjects ${prefixo}`,
-      maxRetries: 2,
-      baseDelay: 500,
+      maxRetries: 4,
+      baseDelay: 2000,
     });
 
     if (listResponse.Contents) {
