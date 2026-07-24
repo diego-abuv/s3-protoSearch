@@ -78,6 +78,7 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey, externa
       s3Status = 'nao_encontrado';
     } catch (err) {
       log.error(`S3 indisponível ou falha de conexão: ${translateError(err.message)}`);
+      log.error('Erro original S3:', err);
       log.info(`   [TIMING] S3 falhou em ${((Date.now() - tS3) / 1000).toFixed(2)}s`);
       onProgress?.({ type: 's3_done', message: 'S3: concluído (falha)' });
       s3Status = `erro: ${translateError(err.message)}`;
