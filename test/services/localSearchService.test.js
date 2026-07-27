@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
 
 const mockFs = vi.hoisted(() => ({
   access: vi.fn(),
@@ -10,20 +10,7 @@ vi.mock('fs/promises', () => {
   return { ...mockFs, default: mockFs };
 });
 
-vi.mock('../../src/db/indexDb.js', () => ({
-  runIndex: vi.fn(),
-  saveIndex: vi.fn(),
-  isDirScanned: vi.fn().mockReturnValue(false),
-  markDirScanned: vi.fn(),
-}));
-
-import { runIndex, saveIndex, isDirScanned, markDirScanned } from '../../src/db/indexDb.js';
-
-async function flushSetImmediate() {
-  for (let i = 0; i < 5; i++) {
-    await new Promise((resolve) => setImmediate(resolve));
-  }
-}
+vi.mock('../../src/db/indexDb.js', () => ({}));
 
 function makeMockDir(entries) {
   let idx = 0;
@@ -66,10 +53,6 @@ describe('findFileAndGetSignedUrl', () => {
     vi.clearAllMocks();
   });
 
-  afterEach(async () => {
-    await flushSetImmediate();
-  });
-
   it('retorna null quando ano nao tem configuracao', async () => {
     const result = await findFileAndGetSignedUrl('1900/01/02', 'protocolo');
     expect(result).toBeNull();
@@ -96,48 +79,10 @@ describe('findFileAndGetSignedUrl', () => {
     }
   });
 
-  it('retorna null quando acesso direto falha e nada encontrado no scan', async () => {
-    mockFs.access.mockResolvedValueOnce(undefined);
-    mockFs.access.mockRejectedValue(new Error('not found'));
-    mockFs.stat.mockResolvedValue(undefined);
-    isDirScanned.mockReturnValue(true);
-
-    const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
-
-    expect(result).toBeNull();
-  });
-
-  it('setImmediate removido: saveIndex NAO e chamado apos retorno do resultado', async () => {
-    mockFs.access.mockResolvedValue(undefined);
-    mockFs.stat.mockResolvedValue(undefined);
-    isDirScanned.mockReturnValue(true);
-
-    const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
-
-    expect(result).toBeNull();
-
-    await flushSetImmediate();
-
-    expect(saveIndex).not.toHaveBeenCalled();
-  });
-
-  it('isDirScanned verificado antes de chamar fs.access para extensoes', async () => {
-    mockFs.stat.mockResolvedValue(undefined);
-    isDirScanned.mockReturnValue(true);
-    mockFs.access.mockResolvedValue(undefined);
-
-    const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
-
-    expect(result).toBeNull();
-    expect(isDirScanned).toHaveBeenCalled();
-    expect(mockFs.access).toHaveBeenCalledTimes(1);
-  });
-
   function setupStreamingTest() {
     mockFs.access.mockResolvedValueOnce(undefined);
     mockFs.access.mockRejectedValue(new Error('not found'));
     mockFs.stat.mockResolvedValue(undefined);
-    isDirScanned.mockReturnValue(false);
   }
 
   it('streaming scan nao crasha quando dir.read() lanca erro', async () => {

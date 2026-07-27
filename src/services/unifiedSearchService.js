@@ -12,6 +12,27 @@ const FOUND_CACHE_TTL = 300;
 
 const activeSearches = new Map();
 
+const MAX_CONCURRENT_LOCAL_SEARCHES = 2;
+let activeLocalSearches = 0;
+const localSearchQueue = [];
+
+async function acquireLocalSearchSlot() {
+  if (activeLocalSearches < MAX_CONCURRENT_LOCAL_SEARCHES) {
+    activeLocalSearches++;
+    return;
+  }
+  await new Promise((resolve) => localSearchQueue.push(resolve));
+  activeLocalSearches++;
+}
+
+function releaseLocalSearchSlot() {
+  activeLocalSearches--;
+  if (localSearchQueue.length > 0) {
+    const next = localSearchQueue.shift();
+    next();
+  }
+}
+
 export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger, onProgress, externalSignal) {
   const cacheKey = `busca:${pasta}:${nomeProtocolo}`;
   const cached = await cacheGet(cacheKey);
@@ -78,6 +99,7 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey, externa
       s3Status = 'nao_encontrado';
     } catch (err) {
       log.error(`S3 indisponível ou falha de conexão: ${translateError(err.message)}`);
+      log.error('Erro original S3:', err);
       log.info(`   [TIMING] S3 falhou em ${((Date.now() - tS3) / 1000).toFixed(2)}s`);
       onProgress?.({ type: 's3_done', message: 'S3: concluído (falha)' });
       s3Status = `erro: ${translateError(err.message)}`;
@@ -148,7 +170,13 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey, externa
     log.info('2. Tentando busca local (fallback)...');
     onProgress?.({ type: 'local_start', message: 'Escaneando servidores locais...' });
     try {
-      const localResult = await findLocally(pasta, nomeProtocolo, log, globalSignal, onProgress);
+      await acquireLocalSearchSlot();
+      let localResult;
+      try {
+        localResult = await findLocally(pasta, nomeProtocolo, log, globalSignal, onProgress);
+      } finally {
+        releaseLocalSearchSlot();
+      }
 
       if (Array.isArray(localResult)) {
         if (localResult.length > 0) {
@@ -163,6 +191,8 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey, externa
       } else if (localResult && localResult.erro) {
         log.error(`Busca local impossibilitada: ${translateError(localResult.erro)}`);
         localStatus = `erro: ${translateError(localResult.erro)}`;
+      } else {
+        localStatus = 'nao_encontrado';
       }
     } catch (err) {
       log.error(`Busca local falhou: ${translateError(err.message)}`);

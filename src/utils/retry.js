@@ -6,6 +6,8 @@ function isRetryable(err) {
     msg.includes('throttl') ||
     msg.includes('timeout') ||
     msg.includes('eai_again') ||
+    msg.includes('enotfound') ||
+    msg.includes('eservfail') ||
     msg.includes('econnreset') ||
     msg.includes('econnrefused') ||
     msg.includes('slowdown') ||

@@ -67,10 +67,6 @@ export function queryIndex(sql, params = []) {
   return rows;
 }
 
-export function runIndex(sql, params = []) {
-  getIndexDb().run(sql, params);
-}
-
 export function isDirScanned(searchRoot, dirPath, maxAgeHours = 24) {
   if (!ready) return false;
   const stmt = getIndexDb().prepare(
@@ -85,7 +81,7 @@ export function isDirScanned(searchRoot, dirPath, maxAgeHours = 24) {
 }
 
 export function markDirScanned(searchRoot, dirPath) {
-  runIndex(
+  getIndexDb().run(
     `INSERT OR REPLACE INTO scanned_dirs (search_root, dir_path, indexed_at) 
      VALUES (?, ?, datetime('now'))`,
     [searchRoot, dirPath],

@@ -52,8 +52,8 @@ async function fetchS3Listing(prefixo, signal) {
 
     const listResponse = await withRetry(() => s3Client.send(listCommand), {
       label: `ListObjects ${prefixo}`,
-      maxRetries: 2,
-      baseDelay: 500,
+      maxRetries: 4,
+      baseDelay: 2000,
     });
 
     if (listResponse.Contents) {

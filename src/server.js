@@ -5,11 +5,19 @@ import { logger } from './utils/logger.js';
 
 process.on('unhandledRejection', (reason) => {
   logger.error('Unhandled rejection:', reason);
-  process.exitCode = 1;
+  process.exit(1);
 });
 process.on('uncaughtException', (err) => {
   logger.error('Uncaught exception:', err);
-  process.exitCode = 1;
+  process.exit(1);
+});
+process.on('SIGTERM', () => {
+  logger.info('Servidor encerrando (SIGTERM)');
+  process.exit(0);
+});
+process.on('SIGINT', () => {
+  logger.info('Servidor encerrando (SIGINT)');
+  process.exit(0);
 });
 process.on('exit', (code) => {
   if (code !== 0) {
