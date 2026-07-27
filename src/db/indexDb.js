@@ -83,7 +83,11 @@ export async function beginTransaction() {
 }
 
 export function commitTransaction() {
-  getIndexDb().run('COMMIT');
+  try {
+    getIndexDb().run('COMMIT');
+  } catch {
+    /* no active transaction */
+  }
 }
 
 export function isDirScanned(searchRoot, dirPath, maxAgeHours = 24) {

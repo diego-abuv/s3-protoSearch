@@ -115,7 +115,7 @@ describe('findFileAndGetSignedUrl', () => {
 
     expect(result.arquivos).toBeNull();
     expect(result.status.s3).toBe('nao_encontrado');
-    expect(result.status.local).toBe('nao_consultado');
+    expect(result.status.local).toBe('nao_encontrado');
   });
 
   it('retorna status erro quando local retorna objeto erro', async () => {
@@ -187,12 +187,10 @@ describe('findFileAndGetSignedUrl', () => {
   });
 
   it('usa cache de busca unificada para resultado null (evita nova consulta)', async () => {
-    cacheGet
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce({
-        arquivos: null,
-        status: { s3: 'nao_encontrado', local: 'nao_encontrado' },
-      });
+    cacheGet.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      arquivos: null,
+      status: { s3: 'nao_encontrado', local: 'nao_encontrado' },
+    });
     findInS3.mockResolvedValue(null);
     queryIndex.mockReturnValue([]);
     findLocally.mockResolvedValue(null);
@@ -220,7 +218,13 @@ describe('findFileAndGetSignedUrl', () => {
     queryIndex.mockReturnValue([]);
     findLocally.mockResolvedValue(null);
 
-    const searchPromise = findFileAndGetSignedUrl('2024/01/02', 'protocolo', undefined, undefined, externalAbort.signal);
+    const searchPromise = findFileAndGetSignedUrl(
+      '2024/01/02',
+      'protocolo',
+      undefined,
+      undefined,
+      externalAbort.signal,
+    );
 
     // yield so doSearch attaches the event listener before we abort
     await new Promise((r) => setImmediate(r));
@@ -242,11 +246,7 @@ describe('findFileAndGetSignedUrl', () => {
 
     await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
 
-    expect(cacheSet).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ arquivos: null }),
-      15,
-    );
+    expect(cacheSet).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ arquivos: null }), 15);
   });
 
   it('gera variantes de data na consulta ao indice', async () => {

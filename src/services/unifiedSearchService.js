@@ -164,6 +164,8 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey, externa
       } else if (localResult && localResult.erro) {
         log.error(`Busca local impossibilitada: ${translateError(localResult.erro)}`);
         localStatus = `erro: ${translateError(localResult.erro)}`;
+      } else {
+        localStatus = 'nao_encontrado';
       }
     } catch (err) {
       log.error(`Busca local falhou: ${translateError(err.message)}`);
