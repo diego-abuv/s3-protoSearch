@@ -262,51 +262,50 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
               hourDirs = [];
             }
 
-            try {
-              for (const hourDir of hourDirs) {
-                if (externalSignal?.aborted) break;
-                let dir;
+            for (const hourDir of hourDirs) {
+              if (externalSignal?.aborted) break;
+              let dir;
+              try {
+                dir = await fs.opendir(hourDir);
+              } catch {
+                continue;
+              }
+              try {
+                let entry;
+                const fastMatches = [];
                 try {
-                  dir = await fs.opendir(hourDir);
-                } catch {
-                  continue;
-                }
-                try {
-                  let entry;
-                  const fastMatches = [];
-                  try {
-                    while ((entry = await dir.read()) !== null) {
-                      if (externalSignal?.aborted) break;
-                      if (entry.isDirectory()) continue;
-                      const nomeBase = path.parse(entry.name).name.toLowerCase();
-                      if (nomeBase.includes(termoBuscado)) {
-                        fastMatches.push(entry);
-                      }
+                  while ((entry = await dir.read()) !== null) {
+                    if (externalSignal?.aborted) break;
+                    if (entry.isDirectory()) continue;
+                    const nomeBase = path.parse(entry.name).name.toLowerCase();
+                    if (nomeBase.includes(termoBuscado)) {
+                      fastMatches.push(entry);
                     }
-                  } catch {
-                    //
                   }
-
-                  if (fastMatches.length > 0) {
-                    shareAbort.abort();
-                    const results = fastMatches.map((entry) => {
-                      const hitPath = path.join(hourDir, entry.name);
-                      log.success(`   [FAST] Arquivo encontrado: ${hitPath}`);
-                      const relativePath = path.relative(relativeBasePath, hitPath);
-                      const pathKey = relativePath.replace(/\\/g, '/');
-                      const nomeParaDownload = path.basename(pathKey);
-                      const downloadUrl = `/download-local?file=${encodeURIComponent(hitPath)}`;
-                      log.success(`Arquivo encontrado! Chave: ${pathKey}`);
-                      log.info(`Arquivo físico em: ${hitPath}`);
-                      return { downloadUrl, nomeParaDownload };
-                    });
-                    return results;
-                  }
-                } finally {
-                  await dir.close();
+                } catch {
+                  //
                 }
+
+                if (fastMatches.length > 0) {
+                  shareAbort.abort();
+                  const results = fastMatches.map((entry) => {
+                    const hitPath = path.join(hourDir, entry.name);
+                    log.success(`   [FAST] Arquivo encontrado: ${hitPath}`);
+                    const relativePath = path.relative(relativeBasePath, hitPath);
+                    const pathKey = relativePath.replace(/\\/g, '/');
+                    const nomeParaDownload = path.basename(pathKey);
+                    const downloadUrl = `/download-local?file=${encodeURIComponent(hitPath)}`;
+                    log.success(`Arquivo encontrado! Chave: ${pathKey}`);
+                    log.info(`Arquivo físico em: ${hitPath}`);
+                    return { downloadUrl, nomeParaDownload };
+                  });
+                  return results;
+                }
+              } finally {
+                await dir.close();
               }
             }
+          }
 
           if (!externalSignal?.aborted) {
             const quickAbort = new AbortController();
