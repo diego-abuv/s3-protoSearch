@@ -11,23 +11,11 @@ vi.mock('fs', () => {
   return { ...mockFs, default: mockFs };
 });
 
-import {
-  initIndexDb,
-  queryIndex,
-  runIndex,
-  isDirScanned,
-  markDirScanned,
-  saveIndex,
-  deleteIndex,
-} from '../../src/db/indexDb.js';
+import { initIndexDb, getIndexDb, queryIndex, isDirScanned, markDirScanned, saveIndex, deleteIndex } from '../../src/db/indexDb.js';
 
 describe('sem initIndexDb', () => {
   it('isDirScanned() retorna false sem init', () => {
     expect(isDirScanned('/root', 'any')).toBe(false);
-  });
-
-  it('runIndex() lanca erro sem init', () => {
-    expect(() => runIndex('SELECT 1')).toThrow('Index database not initialized');
   });
 });
 
@@ -37,17 +25,15 @@ describe('com initIndexDb', () => {
   });
 
   afterEach(() => {
-    runIndex('DELETE FROM file_index');
-    runIndex('DELETE FROM scanned_dirs');
+    getIndexDb().run('DELETE FROM file_index');
+    getIndexDb().run('DELETE FROM scanned_dirs');
   });
 
   it('queryIndex() retorna resultados', () => {
-    runIndex('INSERT INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)', [
-      '123',
-      '/path/to/file.wav',
-      'file.wav',
-      '/sharepoint/test',
-    ]);
+    getIndexDb().run(
+      'INSERT INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)',
+      ['123', '/path/to/file.wav', 'file.wav', '/sharepoint/test'],
+    );
     const rows = queryIndex('SELECT * FROM file_index WHERE protocol_number = ?', ['123']);
     expect(rows).toHaveLength(1);
     expect(rows[0].file_name).toBe('file.wav');
@@ -58,13 +44,11 @@ describe('com initIndexDb', () => {
     expect(rows).toEqual([]);
   });
 
-  it('runIndex() executa comando', () => {
-    runIndex('INSERT INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)', [
-      '456',
-      '/path/to/audio.wav',
-      'audio.wav',
-      '/sharepoint/test',
-    ]);
+  it('getIndexDb().run() executa comando', () => {
+    getIndexDb().run(
+      'INSERT INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)',
+      ['456', '/path/to/audio.wav', 'audio.wav', '/sharepoint/test'],
+    );
     const rows = queryIndex('SELECT * FROM file_index WHERE protocol_number = ?', ['456']);
     expect(rows).toHaveLength(1);
   });
@@ -84,7 +68,7 @@ describe('com initIndexDb', () => {
 
   it('isDirScanned() retorna false para scan expirado', () => {
     markDirScanned('/root', 'expired-dir');
-    runIndex(
+    getIndexDb().run(
       "UPDATE scanned_dirs SET indexed_at = datetime('now', '-25 hours') WHERE search_root = ? AND dir_path = ?",
       ['/root', 'expired-dir'],
     );
@@ -97,12 +81,10 @@ describe('com initIndexDb', () => {
   });
 
   it('deleteIndex() limpa file_index e scanned_dirs', () => {
-    runIndex('INSERT INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)', [
-      '789',
-      '/path/to/file.wav',
-      'file.wav',
-      '/sharepoint/test',
-    ]);
+    getIndexDb().run(
+      'INSERT INTO file_index (protocol_number, file_path, file_name, search_root) VALUES (?, ?, ?, ?)',
+      ['789', '/path/to/file.wav', 'file.wav', '/sharepoint/test'],
+    );
     markDirScanned('/root', '2024/1/1');
 
     deleteIndex();
