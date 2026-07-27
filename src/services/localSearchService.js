@@ -34,7 +34,7 @@ function getPathConfigsForYear(anoBusca) {
   return configs;
 }
 
-async function findFiles(dirPath, targetName, signal, maxDepth, searchRoot) {
+async function findFiles(dirPath, targetName, signal, maxDepth, searchRoot, log = logger) {
   const stack = [[dirPath, 0]];
   const results = [];
   let foundDepth = Infinity;
@@ -44,18 +44,24 @@ async function findFiles(dirPath, targetName, signal, maxDepth, searchRoot) {
 
     const [currentDir, depth] = stack.pop();
     let items = null;
+    let lastError = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         items = await fs.readdir(currentDir, { withFileTypes: true, signal });
         if (items && items.length > 0) break;
-      } catch {
-        //
+      } catch (err) {
+        lastError = err;
       }
       if (attempt < 1) {
         await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
       }
     }
-    if (!items || items.length === 0) continue;
+    if (!items || items.length === 0) {
+      if (lastError) {
+        log.warn(`[findFiles] Falha ao ler "${currentDir}" após 2 tentativas: ${lastError.message}`);
+      }
+      continue;
+    }
 
     for (const item of items) {
       if (signal?.aborted) break;
@@ -119,7 +125,7 @@ function raceToFirstResult(promises) {
   });
 }
 
-async function quickReaddirSearch(dirPath, targetName, signal, maxDepth = 1) {
+async function quickReaddirSearch(dirPath, targetName, signal, maxDepth = 1, log = logger) {
   const results = [];
   const stack = [[dirPath, 0]];
 
@@ -127,13 +133,24 @@ async function quickReaddirSearch(dirPath, targetName, signal, maxDepth = 1) {
     if (signal?.aborted) break;
     const [currentDir, depth] = stack.pop();
 
-    let items;
-    try {
-      items = await fs.readdir(currentDir, { withFileTypes: true, signal });
-    } catch {
+    let items = null;
+    let lastError = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        items = await fs.readdir(currentDir, { withFileTypes: true, signal });
+        break;
+      } catch (err) {
+        lastError = err;
+        if (attempt < 1) {
+          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        }
+      }
+    }
+    if (!items) {
+      log.warn(`[quickReaddirSearch] Falha ao ler "${currentDir}" após 2 tentativas: ${lastError?.message}`);
       continue;
     }
-    if (!items || items.length === 0) continue;
+    if (items.length === 0) continue;
 
     for (const item of items) {
       if (signal?.aborted) break;
@@ -258,16 +275,28 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
             try {
               const dateEntries = await fs.readdir(fullPath, { withFileTypes: true, signal: externalSignal });
               hourDirs = dateEntries.filter((d) => d.isDirectory()).map((d) => path.join(fullPath, d.name));
-            } catch {
+            } catch (err) {
+              log.warn(`[streaming] Falha ao listar horas em "${fullPath}": ${err.message}`);
               hourDirs = [];
             }
 
             for (const hourDir of hourDirs) {
               if (externalSignal?.aborted) break;
-              let dir;
-              try {
-                dir = await fs.opendir(hourDir);
-              } catch {
+              let dir = null;
+              let lastOpenError = null;
+              for (let attempt = 0; attempt < 2; attempt++) {
+                try {
+                  dir = await fs.opendir(hourDir);
+                  break;
+                } catch (err) {
+                  lastOpenError = err;
+                  if (attempt < 1) {
+                    await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+                  }
+                }
+              }
+              if (!dir) {
+                log.warn(`[streaming] Falha ao abrir "${hourDir}" após 2 tentativas: ${lastOpenError?.message}`);
                 continue;
               }
               try {
@@ -282,8 +311,10 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
                       fastMatches.push(entry);
                     }
                   }
-                } catch {
-                  //
+                } catch (err) {
+                  log.warn(
+                    `[streaming] Erro ao ler entradas de "${hourDir}": ${err.message} (parcial: ${fastMatches.length} match(es) até o momento)`,
+                  );
                 }
 
                 if (fastMatches.length > 0) {
@@ -315,7 +346,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
             const quickSignal = AbortSignal.any(quickSignals);
 
             const tQuick = performance.now();
-            const quickResults = await quickReaddirSearch(fullPath, termoBuscado, quickSignal);
+            const quickResults = await quickReaddirSearch(fullPath, termoBuscado, quickSignal, 1, log);
             clearTimeout(quickTimer);
             log.info(
               `   [TIMING] ${prefixo}: quickReaddir: ${(performance.now() - tQuick).toFixed(0)}ms (encontrados ${quickResults.length})`,
@@ -343,7 +374,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
             const findSignal = AbortSignal.any(findSignals);
 
             const tFind = performance.now();
-            const foundFiles = await findFiles(fullPath, termoBuscado, findSignal, 3, searchRoot);
+            const foundFiles = await findFiles(fullPath, termoBuscado, findSignal, 3, searchRoot, log);
             clearTimeout(findTimer);
             log.info(
               `   [TIMING] ${prefixo}: findFiles: ${(performance.now() - tFind).toFixed(0)}ms (indexados ${foundFiles.length} arquivos)`,
