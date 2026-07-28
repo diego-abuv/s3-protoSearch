@@ -194,12 +194,12 @@ form.addEventListener('submit', async (event) => {
         </div>`;
     } else {
       resultadoDiv.innerHTML = `
-        <div class="result-card error">
+        <div class="result-card not-found">
           <div class="d-flex align-items-start gap-3">
-            <div class="result-icon error-icon">!</div>
+            <div class="result-icon not-found-icon">&#10007;</div>
             <div class="flex-grow-1 min-w-0">
-              <strong class="fs-6">Falha na requisição</strong>
-              <p class="mb-1 text-secondary small">${err.name}: ${escapeHtml(err.message)}</p>
+              <strong class="fs-6">Conexão perdida</strong>
+              <p class="mb-1 text-secondary small">A conexão com o servidor foi interrompida. A busca continua em segundo plano — verifique o resultado no painel administrativo.</p>
             </div>
           </div>
         </div>`;

@@ -178,7 +178,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
   log.info(`- Nome do Arquivo (nomeProtocolo): ${nomeProtocolo}`);
 
   if (externalSignal?.aborted) {
-    log.warn('Busca local abortada (timeout externo).');
+    log.warn('Busca local interrompida (conexão perdida).');
     return null;
   }
 
@@ -197,8 +197,8 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
   for (const pathConfig of pathConfigs) {
     for (const searchRoot of pathConfig.searchRoots) {
       if (externalSignal?.aborted) {
-        log.warn('Busca local abortada (timeout externo).');
-        return null;
+        log.warn('Busca local interrompida (conexão perdida).');
+        break;
       }
 
       try {

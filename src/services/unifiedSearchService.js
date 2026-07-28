@@ -136,11 +136,6 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey, externa
     }
 
     const duracao = ((Date.now() - inicio) / 1000).toFixed(2);
-    if (globalSignal.aborted) {
-      log.info(`Busca cancelada pelo usuário.`);
-      log.section(`BUSCA CANCELADA (${duracao}s)`);
-      return { arquivos: null, status: { s3: s3Status, local: localStatus, cancelado: true } };
-    }
     log.destaque(`FALHA: Arquivo não encontrado em nenhuma fonte.`);
     log.section(`BUSCA FINALIZADA (${duracao}s)`);
     const nullResult = { arquivos: null, status: { s3: s3Status, local: localStatus } };

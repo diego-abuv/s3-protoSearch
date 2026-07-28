@@ -170,7 +170,7 @@ describe('findFileAndGetSignedUrl', () => {
     expect(findInS3).toHaveBeenCalledTimes(1);
   });
 
-  it('retorna cancelado:true quando externalSignal abortado', async () => {
+  it('retorna nao_encontrado mesmo quando externalSignal abortado (busca ja completou)', async () => {
     const externalAbort = new AbortController();
 
     cacheGet.mockResolvedValue(null);
@@ -193,8 +193,10 @@ describe('findFileAndGetSignedUrl', () => {
     const result = await searchPromise;
 
     expect(result.arquivos).toBeNull();
-    expect(result.status.cancelado).toBe(true);
-    expect(cacheSet).not.toHaveBeenCalled();
+    expect(result.status.cancelado).toBeUndefined();
+    expect(result.status.s3).toBe('nao_encontrado');
+    expect(result.status.local).toBe('nao_encontrado');
+    expect(cacheSet).toHaveBeenCalled();
   });
 
   it('usa NULL_CACHE_TTL=15 para resultado null', async () => {

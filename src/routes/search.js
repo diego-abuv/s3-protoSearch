@@ -68,7 +68,6 @@ export function createSearchRoutes(searchableService) {
       : undefined;
 
     const externalAbort = new AbortController();
-    const cancelSuffix = () => (externalAbort.signal.aborted ? ', cancelado=1' : '');
     let searchToken = null;
 
     if (wantsSSE) {
@@ -106,7 +105,7 @@ export function createSearchRoutes(searchableService) {
           username: req.user.username,
           action: 'search',
           target: `${pasta}/${nomeProtocolo}`,
-          details: `encontrados=0, tempo=${elapsed}s, s3=nao_consultado, local=nao_consultado${cancelSuffix()}`,
+          details: `encontrados=0, tempo=${elapsed}s, s3=nao_consultado, local=nao_consultado`,
           ip: req.ip,
         });
         if (wantsSSE) {
@@ -131,7 +130,7 @@ export function createSearchRoutes(searchableService) {
 
       const found = resultado.arquivos && resultado.arquivos.length > 0;
       const count = resultado.arquivos?.length || 0;
-      const details = `encontrados=${count}, tempo=${elapsed}s, s3=${resultado.status.s3}, local=${resultado.status.local}${cancelSuffix()}`;
+      const details = `encontrados=${count}, tempo=${elapsed}s, s3=${resultado.status.s3}, local=${resultado.status.local}`;
 
       logAudit({
         user_id: req.user.id,
@@ -177,7 +176,7 @@ export function createSearchRoutes(searchableService) {
         username: req.user.username,
         action: 'search',
         target: `${pasta}/${nomeProtocolo}`,
-        details: `erro=${sanitizeError(err)}${cancelSuffix()}`,
+        details: `erro=${sanitizeError(err)}`,
         ip: req.ip,
       });
 
