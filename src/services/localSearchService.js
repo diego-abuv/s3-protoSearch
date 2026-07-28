@@ -377,7 +377,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
             const foundFiles = await findFiles(fullPath, termoBuscado, findSignal, 3, searchRoot, log);
             clearTimeout(findTimer);
             log.info(
-              `   [TIMING] ${prefixo}: findFiles: ${(performance.now() - tFind).toFixed(0)}ms (indexados ${foundFiles.length} arquivos)`,
+              `   [TIMING] ${prefixo}: findFiles: ${(performance.now() - tFind).toFixed(0)}ms (encontrados ${foundFiles.length} arquivos)`,
             );
 
             if (foundFiles.length === 0) {

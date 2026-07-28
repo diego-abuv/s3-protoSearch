@@ -3,7 +3,6 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
 import { initDatabase } from './db/sqlite.js';
-import { initIndexDb } from './db/indexDb.js';
 import { securityHeaders } from './utils/securityHeaders.js';
 import { createAuthRoutes } from './routes/auth.js';
 import { createSearchRoutes } from './routes/search.js';
@@ -35,7 +34,6 @@ export async function createApp(searchableService) {
   });
 
   await initDatabase();
-  await initIndexDb();
 
   app.use(express.static(path.resolve(__dirname, '..', 'public')));
 

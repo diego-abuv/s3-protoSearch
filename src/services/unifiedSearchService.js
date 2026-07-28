@@ -1,9 +1,7 @@
-import path from 'path';
 import { findFileAndGetSignedUrl as findInS3 } from './s3SearchService.js';
 import { findFileAndGetSignedUrl as findLocally } from './localSearchService.js';
 import { translateError } from '../utils/errorCodes.js';
 import { logger } from '../utils/logger.js';
-import { queryIndex } from '../db/indexDb.js';
 import { cacheGet, cacheSet } from '../utils/cache.js';
 
 const GLOBAL_TIMEOUT_MS = 900_000;
@@ -105,68 +103,6 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey, externa
       s3Status = `erro: ${translateError(err.message)}`;
     }
 
-    onProgress?.({ type: 'index_check', message: 'Verificando índice local...' });
-    const termoBuscado = path.parse(nomeProtocolo).name.toLowerCase();
-    const [ano, mes, dia] = pasta.split('/');
-    const pastaVariants = [
-      `${ano}/${String(parseInt(mes, 10))}/${String(parseInt(dia, 10))}`,
-      `${ano}/${String(parseInt(mes, 10))}/${dia.padStart(2, '0')}`,
-      `${ano}/${mes.padStart(2, '0')}/${dia.padStart(2, '0')}`,
-      `${ano}/${mes.padStart(2, '0')}/${String(parseInt(dia, 10))}`,
-    ];
-    const pastaClauses = pastaVariants.map(() => 'file_path LIKE ?').join(' OR ');
-    const pastaParams = pastaVariants.map((v) => `%/${v}/%`);
-
-    try {
-      const protocolPrefix = String(parseInt((termoBuscado.match(/^\d+/) || [termoBuscado])[0], 10));
-      const idxResults = queryIndex(
-        `SELECT file_path, file_name FROM file_index WHERE protocol_number LIKE ? || '%' AND (${pastaClauses})`,
-        [protocolPrefix, ...pastaParams],
-      );
-
-      if (idxResults && idxResults.length > 0) {
-        log.success(`Arquivo(s) encontrado(s) no índice local (${idxResults.length}).`);
-        onProgress?.({ type: 'index_done', message: 'Índice: concluído' });
-        const arquivos = idxResults.map((r) => ({
-          downloadUrl: `/download-local?file=${encodeURIComponent(r.file_path)}`,
-          nomeParaDownload: path.basename(r.file_name),
-        }));
-        log.section(`BUSCA FINALIZADA (${((Date.now() - inicio) / 1000).toFixed(2)}s)`);
-        const idxResult = { arquivos, status: { s3: s3Status, local: 'indexado' } };
-        await cacheSet(cacheKey, idxResult, FOUND_CACHE_TTL);
-        return idxResult;
-      }
-      log.info('Índice local: Nenhum arquivo encontrado.');
-    } catch (idxErr) {
-      log.warn(`Índice local indisponível, seguindo para fallback: ${translateError(idxErr.message)}`);
-    }
-
-    try {
-      const likeResults = queryIndex(
-        `SELECT file_path, file_name FROM file_index WHERE file_name LIKE ? AND (${pastaClauses}) LIMIT 20`,
-        [`%${termoBuscado}%`, ...pastaParams],
-      );
-      if (likeResults && likeResults.length > 0) {
-        log.success(`Arquivo(s) encontrado(s) no índice local por substring (${likeResults.length}).`);
-        onProgress?.({
-          type: 'index_done',
-          message: 'Índice: concluído',
-        });
-        const arquivos = likeResults.map((r) => ({
-          downloadUrl: `/download-local?file=${encodeURIComponent(r.file_path)}`,
-          nomeParaDownload: path.basename(r.file_name),
-        }));
-        log.section(`BUSCA FINALIZADA (${((Date.now() - inicio) / 1000).toFixed(2)}s)`);
-        const likeResult = { arquivos, status: { s3: s3Status, local: 'indexado' } };
-        await cacheSet(cacheKey, likeResult, FOUND_CACHE_TTL);
-        return likeResult;
-      }
-      log.info('Índice local: Nenhum arquivo encontrado por substring.');
-    } catch (likeErr) {
-      log.warn(`Busca por substring indisponível: ${translateError(likeErr.message)}`);
-    }
-
-    onProgress?.({ type: 'index_done', message: 'Índice: concluído' });
     log.info('2. Tentando busca local (fallback)...');
     onProgress?.({ type: 'local_start', message: 'Escaneando servidores locais...' });
     try {

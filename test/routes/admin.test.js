@@ -29,10 +29,6 @@ vi.mock('../../src/db/sqlite.js', () => ({
   logAudit: vi.fn(),
 }));
 
-vi.mock('../../src/db/indexDb.js', () => ({
-  initIndexDb: vi.fn().mockResolvedValue(undefined),
-}));
-
 import { createApp } from '../../src/app.js';
 
 function makeAdminToken() {

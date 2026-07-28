@@ -25,10 +25,6 @@ vi.mock('../../src/db/sqlite.js', () => ({
   logAudit: vi.fn(),
 }));
 
-vi.mock('../../src/db/indexDb.js', () => ({
-  initIndexDb: vi.fn().mockResolvedValue(undefined),
-}));
-
 const { mockSend } = vi.hoisted(() => {
   const mockSend = vi.fn();
   return { mockSend };

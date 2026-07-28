@@ -583,7 +583,6 @@ document.getElementById('auditTableBody').addEventListener('click', (e) => {
         if (!v || v === 'nao_consultado') return 'skip';
         if (v === 'ok') return 'ok';
         if (v === 'nao_encontrado') return 'miss';
-        if (v === 'indexado') return 'index';
         return 'err';
       };
       sv.innerHTML = `

@@ -10,7 +10,6 @@ vi.mock('fs/promises', () => {
   return { ...mockFs, default: mockFs };
 });
 
-vi.mock('../../src/db/indexDb.js', () => ({}));
 
 function makeMockDir(entries) {
   let idx = 0;

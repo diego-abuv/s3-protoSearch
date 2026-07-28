@@ -18,14 +18,9 @@ vi.mock('../../src/services/localSearchService.js', () => ({
   findFileAndGetSignedUrl: vi.fn(),
 }));
 
-vi.mock('../../src/db/indexDb.js', () => ({
-  queryIndex: vi.fn(),
-}));
-
 import { cacheGet, cacheSet } from '../../src/utils/cache.js';
 import { findFileAndGetSignedUrl as findInS3 } from '../../src/services/s3SearchService.js';
 import { findFileAndGetSignedUrl as findLocally } from '../../src/services/localSearchService.js';
-import { queryIndex } from '../../src/db/indexDb.js';
 
 describe('findFileAndGetSignedUrl', () => {
   let findFileAndGetSignedUrl;
@@ -52,21 +47,8 @@ describe('findFileAndGetSignedUrl', () => {
     expect(findLocally).not.toHaveBeenCalled();
   });
 
-  it('retorna resultado do indice exato quando S3 nao encontra', async () => {
+  it('retorna resultado local quando S3 nao encontra', async () => {
     findInS3.mockResolvedValue(null);
-    queryIndex.mockReturnValue([{ file_path: '/mnt/share/file.mp3', file_name: 'file.mp3' }]);
-
-    const result = await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
-
-    expect(result.arquivos).toHaveLength(1);
-    expect(result.arquivos[0].nomeParaDownload).toBe('file.mp3');
-    expect(result.status).toEqual({ s3: 'nao_encontrado', local: 'indexado' });
-    expect(findLocally).not.toHaveBeenCalled();
-  });
-
-  it('retorna resultado local quando S3 + indice falham', async () => {
-    findInS3.mockResolvedValue(null);
-    queryIndex.mockReturnValue([]);
     findLocally.mockResolvedValue([
       { downloadUrl: '/download-local?file=/mnt/share/file.mp3', nomeParaDownload: 'file.mp3' },
     ]);
@@ -79,7 +61,6 @@ describe('findFileAndGetSignedUrl', () => {
 
   it('retorna resultado local quando S3 lanca erro', async () => {
     findInS3.mockRejectedValue(new Error('AccessDenied'));
-    queryIndex.mockReturnValue([]);
     findLocally.mockResolvedValue([
       { downloadUrl: '/download-local?file=/mnt/share/file.mp3', nomeParaDownload: 'file.mp3' },
     ]);
@@ -91,24 +72,8 @@ describe('findFileAndGetSignedUrl', () => {
     expect(result.status.local).toBe('ok');
   });
 
-  it('segue para local FS mesmo quando queryIndex lanca erro', async () => {
-    findInS3.mockResolvedValue(null);
-    queryIndex.mockImplementation(() => {
-      throw new Error('db locked');
-    });
-    findLocally.mockResolvedValue([
-      { downloadUrl: '/download-local?file=/mnt/share/file.mp3', nomeParaDownload: 'file.mp3' },
-    ]);
-
-    const result = await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
-
-    expect(result.arquivos).toHaveLength(1);
-    expect(result.status.local).toBe('ok');
-  });
-
   it('retorna arquivos null quando todas fontes falham', async () => {
     findInS3.mockResolvedValue(null);
-    queryIndex.mockReturnValue([]);
     findLocally.mockResolvedValue(null);
 
     const result = await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
@@ -120,7 +85,6 @@ describe('findFileAndGetSignedUrl', () => {
 
   it('retorna status erro quando local retorna objeto erro', async () => {
     findInS3.mockResolvedValue(null);
-    queryIndex.mockReturnValue([]);
     findLocally.mockResolvedValue({ erro: 'Nenhum caminho de rede acessivel' });
 
     const result = await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
@@ -141,7 +105,6 @@ describe('findFileAndGetSignedUrl', () => {
     expect(result).toEqual(cachedResult);
     expect(findInS3).not.toHaveBeenCalled();
     expect(findLocally).not.toHaveBeenCalled();
-    expect(queryIndex).not.toHaveBeenCalled();
   });
 
   it('popula cache apos buscar normalmente', async () => {
@@ -157,7 +120,6 @@ describe('findFileAndGetSignedUrl', () => {
   it('popula cache mesmo quando resultado e null (para evitar repeticoes)', async () => {
     cacheGet.mockResolvedValue(null);
     findInS3.mockResolvedValue(null);
-    queryIndex.mockReturnValue([]);
     findLocally.mockResolvedValue(null);
 
     const result = await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
@@ -173,7 +135,6 @@ describe('findFileAndGetSignedUrl', () => {
   it('deduplica buscas concorrentes com mesmo cacheKey', async () => {
     cacheGet.mockResolvedValue(null);
     findInS3.mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve(null), 100)));
-    queryIndex.mockReturnValue([]);
     findLocally.mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve(null), 100)));
 
     const promise1 = findFileAndGetSignedUrl('2024/01/02', 'protocolo');
@@ -192,7 +153,6 @@ describe('findFileAndGetSignedUrl', () => {
       status: { s3: 'nao_encontrado', local: 'nao_encontrado' },
     });
     findInS3.mockResolvedValue(null);
-    queryIndex.mockReturnValue([]);
     findLocally.mockResolvedValue(null);
 
     await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
@@ -215,7 +175,6 @@ describe('findFileAndGetSignedUrl', () => {
 
     cacheGet.mockResolvedValue(null);
     findInS3.mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve(null), 50)));
-    queryIndex.mockReturnValue([]);
     findLocally.mockResolvedValue(null);
 
     const searchPromise = findFileAndGetSignedUrl(
@@ -241,7 +200,6 @@ describe('findFileAndGetSignedUrl', () => {
   it('usa NULL_CACHE_TTL=15 para resultado null', async () => {
     cacheGet.mockResolvedValue(null);
     findInS3.mockResolvedValue(null);
-    queryIndex.mockReturnValue([]);
     findLocally.mockResolvedValue(null);
 
     await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
@@ -249,21 +207,4 @@ describe('findFileAndGetSignedUrl', () => {
     expect(cacheSet).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ arquivos: null }), 15);
   });
 
-  it('gera variantes de data na consulta ao indice', async () => {
-    findInS3.mockResolvedValue(null);
-    queryIndex.mockReturnValue([]);
-    findLocally.mockResolvedValue(null);
-
-    await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
-
-    expect(queryIndex).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.arrayContaining([
-        expect.stringMatching(/%\/2024\/1\/2\/%/),
-        expect.stringMatching(/%\/2024\/1\/02\/%/),
-        expect.stringMatching(/%\/2024\/01\/02\/%/),
-        expect.stringMatching(/%\/2024\/01\/2\/%/),
-      ]),
-    );
-  });
 });

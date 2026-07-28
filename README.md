@@ -39,8 +39,7 @@ Aplicação web containerizada para busca unificada de arquivos de áudio/docume
 
 - **Busca unificada S3 → local**: Tenta o S3 primeiro; se falhar ou não encontrar, busca nos diretórios locais automaticamente.
 - **SSE streaming de progresso**: Backend emite eventos `progress`/`result` em tempo real via Server-Sent Events; frontend lê via `ReadableStream`.
-- **Streaming readdir (fast path)**: Usa `fs.opendir` + `dir.read()` em batches — lê o hour dir inteiro coletando todos os matches sem carregar todos os entries na memória (testado com 48K+ arquivos). Indexa todos os arquivos durante o stream com batch commit a cada 5.000. Se processar todos os hour dirs sem match, pula fases seguintes e marca data como escaneada.
-- **Pula varredura local se data já indexada**: `isDirScanned` (TTL 1h) executa antes do streaming. Se a data já foi completamente escaneada (via streaming completo ou findFiles), pula todas as fases de busca local.
+- **Streaming readdir (fast path)**: Usa `fs.opendir` + `dir.read()` em batches — lê o hour dir inteiro coletando todos os matches sem carregar todos os entries na memória (testado com 48K+ arquivos).
 - **URLs assinadas**: Links temporários de 1 hora sem expor credenciais AWS.
 - **Fallback resiliente**: Falha de rede no S3 não quebra o fluxo — o fallback local é executado mesmo com erro.
 - **Autenticação JWT**: Login com access token em memória + refresh token em cookie httpOnly (rotação a cada uso).
@@ -57,7 +56,6 @@ Aplicação web containerizada para busca unificada de arquivos de áudio/docume
 - **Cache Redis por prefixo S3**: Listagens S3 cacheadas por prefixo (TTL 300s), evitando chamadas repetidas ao bucket para arquivos na mesma data. Fallback silencioso se Redis indisponível.
 - **Dedup de buscas concorrentes**: Buscas idênticas aguardam a Promise existente em vez de duplicar requisições.
 - **Timeouts por fase**: Tempos separados para readdir rápido (240s) e findFiles (300s), com timeout global de 900s. Cada fase tem seu próprio AbortController.
-- **Batch indexing durante streaming**: A cada 5.000 arquivos lidos, o índice SQLite é commitado em lote — evita crescimento excessivo de memória e garante persistência incremental.
 
 ---
 
@@ -96,18 +94,9 @@ graph TD
             REDIS -->|hit| RJSON["Resposta JSON"]
             REDIS -->|miss| S3["S3 ListObjectsV2"]
             S3 -->|cacheia listing| REDIS
-            S3 -->|falha / não encontrou| IDX["Índice Local SQLite"]
-            IDX -->|encontrou| RJSON["Resposta JSON"]
-            IDX -->|não encontrou| DATA_CHECK["isDirScanned?<br/>(TTL 1h)"]
-            DATA_CHECK -->|já varrido| RJSON
-            DATA_CHECK -->|não varrido| READDIR["streaming opendir<br/>indexa + busca"]
-            READDIR -->|encontrou| RJSON
-            READDIR -->|completo sem match| SCANNED["marca scanned"]
-            READDIR -->|incompleto| QUICK["quickReaddirSearch<br/>depth 1"]
-            QUICK -->|encontrou| RJSON
-            QUICK -->|não encontrou| FINDFILES["findFiles depth 3<br/>index on-the-fly"]
-            FINDFILES -->|encontrou/não| RJSON
-            SCANNED --> RJSON
+            S3 -->|falha / não encontrou| LOCAL["Local Search<br/>opendir streaming<br/>+ findFiles depth 3"]
+            LOCAL -->|encontrou| RJSON
+            LOCAL -->|não encontrou| RJSON
             S3 -->|URL assinada 1h| RJSON["Resposta JSON"]
         end
 
@@ -134,7 +123,6 @@ graph TD
 
     DB --> AUDIT_LOG[audit_log<br/>90 dias rotate]
     DB --> USERS[users]
-    DB --> INDEX_DB[file_index<br/>2.5M+ registros]
     DB --> TOKENS[refresh_tokens<br/>expired cleanup]
 
     style C fill:#009688,stroke:#fff,stroke-width:2px
@@ -272,7 +260,6 @@ s3-protoSearch/
 │   ├── server.js                 # Entry point (validação de secrets)
 │   ├── app.js                    # Express + CSP + HSTS + rotas
 │   ├── db/
-│   │   ├── indexDb.js            # SQLite — índice local de arquivos (file_index)
 │   │   └── sqlite.js             # SQLite (sql.js) — usuários, tokens, audit
 │   ├── middleware/
 │   │   └── auth.js               # JWT, loginLimiter, authMiddleware, adminMiddleware
@@ -282,9 +269,9 @@ s3-protoSearch/
 │   │   ├── download.js           # GET /download-local, /download-s3
 │   │   └── admin.js              # CRUD usuários + audit log + stats
 │   ├── services/
-│   │   ├── unifiedSearchService.js   # S3 → Índice → Local
+│   │   ├── unifiedSearchService.js   # S3 → Local
 │   │   ├── s3SearchService.js        # Busca S3 + signed URLs
-│   │   └── localSearchService.js     # Busca em diretório local + index on-the-fly
+│   │   └── localSearchService.js     # Busca em diretório local (streaming opendir)
 │   └── utils/
 │       ├── errorCodes.js             # Tradução de erros
 │       ├── retry.js                  # Exponential backoff
@@ -292,9 +279,6 @@ s3-protoSearch/
 │       ├── logger.js                 # Logger estruturado
 │       ├── validation.js             # Validação de senha forte
 │       └── cache.js                  # Cache Redis com fallback silencioso
-├── scripts/
-│   ├── indexFiles.js              # Indexação em lote do diretório local
-│   └── migrateIndex.js            # Migração app.db → index.db
 ├── public/
 │   ├── login.html                # Login com validação inline
 │   ├── admin.html                # Painel admin (CRUD + audit)
@@ -304,8 +288,7 @@ s3-protoSearch/
 │   └── js/                       # Módulos: auth, app, login, admin, search, render, theme, utils
 ├── test/
 │   ├── db/
-│   │   ├── sqlite.test.js        # 13 testes
-│   │   └── indexDb.test.js       # 11 testes
+│   │   └── sqlite.test.js        # 13 testes
 │   ├── middleware/
 │   │   └── auth.test.js          # 14 testes
 │   ├── routes/
@@ -456,9 +439,7 @@ Define o cookie `refresh_token` (httpOnly, secure, sameSite=strict) com duraçã
 |-------------|---------------|------|---------|
 | `ok` | `nao_consultado` | **200** | S3 encontrou, fallback não foi necessário |
 | `nao_encontrado` | `ok` | **200** | S3 não tinha o arquivo, local encontrou |
-| `nao_encontrado` | `indexado` | **200** | S3 não achou, índice local encontrou |
 | `erro: ...` | `ok` | **200** | S3 indisponível, local assumiu |
-| `erro: ...` | `indexado` | **200** | S3 falhou, índice local encontrou |
 | `nao_encontrado` | `nao_encontrado` | **404** | Arquivo não existe em nenhuma fonte |
 | `erro: ...` | `erro: ...` | **404** | Ambas as fontes falharam |
 
@@ -626,7 +607,7 @@ npm run dev                     # Node --watch com auto-restart
 
 ## Testes
 
-**243 testes — 15 arquivos — Vitest + Supertest**
+**252 testes — 14 arquivos — Vitest + Supertest**
 
 | Comando | Descrição |
 |---------|-----------|
@@ -641,7 +622,7 @@ npm run dev                     # Node --watch com auto-restart
 | Fase | Arquivos | Testes |
 |------|----------|--------|
 | Foundation (validação, erros) | 2 | 41 |
-| Database (sqlite, indexDb) | 2 | 24 |
+| Database (sqlite) | 1 | 13 |
 | Middleware + Utilitários | 3 | 39 |
 | Cache Redis | 1 | 12 |
 | Services (S3, Local, Unificado) | 3 | 23 |

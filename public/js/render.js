@@ -56,7 +56,6 @@ function buildStep(fonte, status) {
 
   let cls, text;
   if (status === 'ok') { cls = 'ok'; text = 'Arquivo encontrado'; }
-  else if (status === 'indexado') { cls = 'index'; text = 'Arquivo encontrado (índice local)'; }
   else if (status === 'nao_encontrado') { cls = 'miss'; text = 'Nenhum resultado'; }
   else if (status === 'nao_consultado') { cls = 'skip'; text = 'Não consultado'; }
   else if (status && status.startsWith('erro:')) { cls = 'err'; text = status.replace('erro:', '').trim(); }
