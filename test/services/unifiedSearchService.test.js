@@ -170,12 +170,22 @@ describe('findFileAndGetSignedUrl', () => {
     expect(findInS3).toHaveBeenCalledTimes(1);
   });
 
-  it('retorna nao_encontrado mesmo quando externalSignal abortado (busca ja completou)', async () => {
+  function makeAbortAwareLocalMock() {
+    return (_dirPath, _targetName, _log, signal) =>
+      new Promise((resolve) => {
+        if (signal?.aborted) { resolve({ erro: 'conexão perdida' }); return; }
+        const timer = setTimeout(() => resolve(null), 50);
+        const onAbort = () => { clearTimeout(timer); resolve({ erro: 'conexão perdida' }); };
+        signal?.addEventListener('abort', onAbort, { once: true });
+      });
+  }
+
+  it('retorna erro de conexao perdida quando externalSignal abortado durante busca local', async () => {
     const externalAbort = new AbortController();
 
     cacheGet.mockResolvedValue(null);
     findInS3.mockImplementation(() => new Promise((resolve) => setTimeout(() => resolve(null), 50)));
-    findLocally.mockResolvedValue(null);
+    findLocally.mockImplementation(makeAbortAwareLocalMock());
 
     const searchPromise = findFileAndGetSignedUrl(
       '2024/01/02',
@@ -195,8 +205,33 @@ describe('findFileAndGetSignedUrl', () => {
     expect(result.arquivos).toBeNull();
     expect(result.status.cancelado).toBeUndefined();
     expect(result.status.s3).toBe('nao_encontrado');
-    expect(result.status.local).toBe('nao_encontrado');
+    expect(result.status.local).toBe('erro: Conexão perdida. Tente novamente.');
     expect(cacheSet).toHaveBeenCalled();
+  });
+
+  it('retorna erro de conexao perdida quando S3 falha e usuario cancela durante local', async () => {
+    const externalAbort = new AbortController();
+
+    cacheGet.mockResolvedValue(null);
+    findInS3.mockRejectedValue(new Error('AccessDenied'));
+    findLocally.mockImplementation(makeAbortAwareLocalMock());
+
+    const searchPromise = findFileAndGetSignedUrl(
+      '2024/01/02',
+      'protocolo',
+      undefined,
+      undefined,
+      externalAbort.signal,
+    );
+
+    await new Promise((r) => setImmediate(r));
+    externalAbort.abort();
+
+    const result = await searchPromise;
+
+    expect(result.arquivos).toBeNull();
+    expect(result.status.s3).toContain('erro');
+    expect(result.status.local).toBe('erro: Conexão perdida. Tente novamente.');
   });
 
   it('usa NULL_CACHE_TTL=15 para resultado null', async () => {
@@ -209,4 +244,32 @@ describe('findFileAndGetSignedUrl', () => {
     expect(cacheSet).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ arquivos: null }), 15);
   });
 
+  it('retorna erro de tempo limite excedido quando global timeout expira durante busca local', async () => {
+    vi.useFakeTimers();
+    try {
+      cacheGet.mockResolvedValue(null);
+      findInS3.mockResolvedValue(null);
+
+      let localResolve;
+      findLocally.mockImplementation(
+        (_dirPath, _targetName, _log, _signal) => new Promise((r) => { localResolve = r; }),
+      );
+
+      const searchPromise = findFileAndGetSignedUrl('2024/01/02', 'protocolo');
+
+      await null;
+      await null;
+      await null;
+
+      vi.advanceTimersByTime(10_000_000);
+      localResolve(null);
+
+      const result = await searchPromise;
+
+      expect(result.arquivos).toBeNull();
+      expect(result.status.local).toBe('erro: tempo limite excedido');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

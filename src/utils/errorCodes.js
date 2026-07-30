@@ -19,6 +19,18 @@ export function translateError(message) {
     return 'Arquivo não encontrado.';
   }
 
+  if (lower.includes('busca interrompida')) {
+    return 'Busca interrompida. Tente novamente.';
+  }
+
+  if (lower.includes('tempo limite')) {
+    return 'O tempo limite da busca foi excedido. Tente novamente.';
+  }
+
+  if (lower.includes('conexão perdida')) {
+    return 'Conexão perdida. Tente novamente.';
+  }
+
   return 'Ocorreu um erro inesperado.';
 }
 

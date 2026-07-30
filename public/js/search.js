@@ -5,6 +5,21 @@ const btnText = document.getElementById('btn-text');
 const btnSpinner = document.getElementById('btn-spinner');
 const dataInput = document.getElementById('data');
 
+function showRetryButton(status) {
+  const isInterrupted =
+    status?.local === 'nao_consultado' ||
+    status?.local?.startsWith('erro:') ||
+    status?.s3?.startsWith('erro:');
+  if (!isInterrupted) return;
+  const card = resultadoDiv.querySelector('.result-card');
+  if (!card) return;
+  const btn = document.createElement('button');
+  btn.className = 'btn btn-outline-light btn-sm mt-2';
+  btn.textContent = '\u21BB Repetir busca';
+  btn.addEventListener('click', () => form.requestSubmit());
+  card.appendChild(btn);
+}
+
 dataInput.addEventListener('paste', (e) => {
   const text = (e.clipboardData || window.clipboardData).getData('text');
   if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) {
@@ -129,6 +144,7 @@ form.addEventListener('submit', async (event) => {
           const pre = card.querySelector('pre');
           if (pre) pre.remove();
           resultadoDiv.appendChild(card);
+          showRetryButton(finalData.status);
         }
       }
       return;
@@ -180,6 +196,7 @@ form.addEventListener('submit', async (event) => {
 
     resultadoDiv.innerHTML = '';
     resultadoDiv.appendChild(buildResultHtml(data, duracao()));
+    showRetryButton(data.status);
   } catch (err) {
     if (err.name === 'AbortError' || abortController?.signal.aborted) {
       resultadoDiv.innerHTML = `

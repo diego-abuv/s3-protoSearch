@@ -391,12 +391,14 @@ function badgeForAction(action) {
 function resultBadge(details) {
   if (!details) return '<span class="text-secondary">-</span>';
   if (details.includes('cancelado=1')) return '<span class="badge badge-outline-secondary">Cancelado</span>';
+
   const m = details.match(/encontrados=(\d+)/);
-  if (m) {
-    const count = parseInt(m[1], 10);
-    if (count > 0) return '<span class="badge badge-outline-success">Encontrado</span>';
-    return '<span class="badge badge-outline-warning">Nao encontrado</span>';
-  }
+  if (m && parseInt(m[1], 10) > 0) return '<span class="badge badge-outline-success">Encontrado</span>';
+
+  if (details.includes('interrompida=true')) return '<span class="badge badge-outline-danger">Erro</span>';
+
+  if (m && parseInt(m[1], 10) === 0) return '<span class="badge badge-outline-warning">Nao encontrado</span>';
+
   if (details.startsWith('erro=')) return '<span class="badge badge-outline-danger">Erro</span>';
   return '<span class="text-secondary">-</span>';
 }

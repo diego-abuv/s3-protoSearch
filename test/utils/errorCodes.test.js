@@ -38,6 +38,18 @@ describe('translateError', () => {
     expect(translateError('NoSuchKey - the specified key does not exist')).toBe('Arquivo não encontrado.');
   });
 
+  it('retorna mensagem de busca interrompida', () => {
+    expect(translateError('busca interrompida')).toBe('Busca interrompida. Tente novamente.');
+  });
+
+  it('retorna mensagem de tempo limite excedido', () => {
+    expect(translateError('tempo limite excedido')).toBe('O tempo limite da busca foi excedido. Tente novamente.');
+  });
+
+  it('retorna mensagem de conexao perdida', () => {
+    expect(translateError('conexão perdida')).toBe('Conexão perdida. Tente novamente.');
+  });
+
   it('retorna mensagem fallback para erro desconhecido', () => {
     expect(translateError('erro generico')).toBe('Ocorreu um erro inesperado.');
   });

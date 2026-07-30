@@ -3,8 +3,8 @@ import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../utils/logger.js';
 
-const QUICK_READDIR_TIMEOUT_MS = 240_000;
-const FIND_FILES_TIMEOUT_MS = 300_000;
+const QUICK_READDIR_TIMEOUT_MS = 600_000;
+const FIND_FILES_TIMEOUT_MS = 600_000;
 
 function getPathConfigsForYear(anoBusca) {
   const configs = [];
@@ -45,20 +45,20 @@ async function findFiles(dirPath, targetName, signal, maxDepth, searchRoot, log 
     const [currentDir, depth] = stack.pop();
     let items = null;
     let lastError = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
         items = await fs.readdir(currentDir, { withFileTypes: true, signal });
         if (items && items.length > 0) break;
       } catch (err) {
         lastError = err;
       }
-      if (attempt < 1) {
-        await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
       }
     }
     if (!items || items.length === 0) {
       if (lastError) {
-        log.warn(`[findFiles] Falha ao ler "${currentDir}" após 2 tentativas: ${lastError.message}`);
+        log.warn(`[findFiles] Falha ao ler "${currentDir}" após 3 tentativas: ${lastError.message}`);
       }
       continue;
     }
@@ -135,19 +135,19 @@ async function quickReaddirSearch(dirPath, targetName, signal, maxDepth = 1, log
 
     let items = null;
     let lastError = null;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
         items = await fs.readdir(currentDir, { withFileTypes: true, signal });
         break;
       } catch (err) {
         lastError = err;
-        if (attempt < 1) {
-          await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+        if (attempt < 2) {
+          await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
         }
       }
     }
     if (!items) {
-      log.warn(`[quickReaddirSearch] Falha ao ler "${currentDir}" após 2 tentativas: ${lastError?.message}`);
+      log.warn(`[quickReaddirSearch] Falha ao ler "${currentDir}" após 3 tentativas: ${lastError?.message}`);
       continue;
     }
     if (items.length === 0) continue;
@@ -284,19 +284,19 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
               if (externalSignal?.aborted) break;
               let dir = null;
               let lastOpenError = null;
-              for (let attempt = 0; attempt < 2; attempt++) {
+              for (let attempt = 0; attempt < 3; attempt++) {
                 try {
                   dir = await fs.opendir(hourDir);
                   break;
                 } catch (err) {
                   lastOpenError = err;
-                  if (attempt < 1) {
-                    await new Promise((r) => setTimeout(r, 1000 * (attempt + 1)));
+                  if (attempt < 2) {
+                    await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
                   }
                 }
               }
               if (!dir) {
-                log.warn(`[streaming] Falha ao abrir "${hourDir}" após 2 tentativas: ${lastOpenError?.message}`);
+                log.warn(`[streaming] Falha ao abrir "${hourDir}" após 3 tentativas: ${lastOpenError?.message}`);
                 continue;
               }
               try {
@@ -407,6 +407,11 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
       const resultado = await raceToFirstResult(promessas);
 
       log.info(`   [TIMING] Busca local resolvida em ${(performance.now() - t0).toFixed(0)}ms`);
+
+      if (externalSignal?.aborted) {
+        log.warn('Busca local interrompida (conexão perdida).');
+        return { erro: 'conexão perdida' };
+      }
 
       if (resultado) {
         log.section('Busca local finalizada com sucesso');

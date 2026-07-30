@@ -81,7 +81,16 @@ export function createSearchRoutes(searchableService) {
       searchTokens.set(searchToken, externalAbort);
       res.write(`event: searchToken\ndata: ${JSON.stringify({ token: searchToken })}\n\n`);
 
+      const heartbeatInterval = setInterval(() => {
+        try {
+          res.write(`event: heartbeat\ndata: {}\n\n`);
+        } catch {
+          /* connection already closed */
+        }
+      }, 60_000);
+
       const cleanup = () => {
+        clearInterval(heartbeatInterval);
         if (searchToken) searchTokens.delete(searchToken);
         if (!res.writableEnded) externalAbort.abort();
       };
@@ -130,7 +139,10 @@ export function createSearchRoutes(searchableService) {
 
       const found = resultado.arquivos && resultado.arquivos.length > 0;
       const count = resultado.arquivos?.length || 0;
-      const details = `encontrados=${count}, tempo=${elapsed}s, s3=${resultado.status.s3}, local=${resultado.status.local}`;
+      const wasInterrupted = resultado.status?.local?.startsWith('erro:') || resultado.status?.s3?.startsWith('erro:');
+      const details =
+        `encontrados=${count}, tempo=${elapsed}s, s3=${resultado.status.s3}, local=${resultado.status.local}` +
+        (wasInterrupted ? ', interrompida=true' : '');
 
       logAudit({
         user_id: req.user.id,

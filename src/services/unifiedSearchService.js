@@ -4,7 +4,7 @@ import { translateError } from '../utils/errorCodes.js';
 import { logger } from '../utils/logger.js';
 import { cacheGet, cacheSet } from '../utils/cache.js';
 
-const GLOBAL_TIMEOUT_MS = 900_000;
+const GLOBAL_TIMEOUT_MS = 1_800_000;
 const NULL_CACHE_TTL = 15;
 const FOUND_CACHE_TTL = 300;
 
@@ -133,6 +133,14 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey, externa
     } catch (err) {
       log.error(`Busca local falhou: ${translateError(err.message)}`);
       localStatus = `erro: ${translateError(err.message)}`;
+    }
+
+    if (globalSignal.aborted) {
+      const isTimeout = Date.now() - inicio >= GLOBAL_TIMEOUT_MS;
+      if (isTimeout) {
+        log.warn('Busca interrompida (tempo limite excedido).');
+        localStatus = 'erro: tempo limite excedido';
+      }
     }
 
     const duracao = ((Date.now() - inicio) / 1000).toFixed(2);

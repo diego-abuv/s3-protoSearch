@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
+import http from 'http';
 
 vi.hoisted(() => {
   process.env.JWT_SECRET = 'test-jwt-secret';
@@ -153,6 +154,42 @@ describe('Search Routes', () => {
       );
     });
 
+    it('audit registra interrompida=true quando status contem erro', async () => {
+      mockService.findFileAndGetSignedUrl.mockResolvedValue({
+        arquivos: null,
+        status: { s3: 'erro: AccessDenied', local: 'nao_consultado' },
+      });
+
+      await request(app)
+        .post('/buscar-arquivo')
+        .set('Authorization', `Bearer ${makeToken()}`)
+        .send({ pasta: '2024/01/02', nomeProtocolo: '12345' });
+
+      expect(sqlite.logAudit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          details: expect.stringContaining('interrompida=true'),
+        }),
+      );
+    });
+
+    it('audit nao registra interrompida quando busca normal sem resultados', async () => {
+      mockService.findFileAndGetSignedUrl.mockResolvedValue({
+        arquivos: null,
+        status: { s3: 'nao_encontrado', local: 'nao_encontrado' },
+      });
+
+      await request(app)
+        .post('/buscar-arquivo')
+        .set('Authorization', `Bearer ${makeToken()}`)
+        .send({ pasta: '2024/01/02', nomeProtocolo: '12345' });
+
+      expect(sqlite.logAudit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          details: expect.not.stringContaining('interrompida'),
+        }),
+      );
+    });
+
     it('autentica via x-api-key header', async () => {
       mockService.findFileAndGetSignedUrl.mockResolvedValue({
         arquivos: [{ url: 'url', nome: 'file.mp3' }],
@@ -298,9 +335,7 @@ describe('Search Routes', () => {
 
       const loggerMod = await import('../../src/utils/logger.js');
       const ctxLogger = loggerMod.createContextLogger.mock.results[0].value;
-      expect(ctxLogger.info).toHaveBeenCalledWith(
-        expect.stringContaining('(encontrado: 1'),
-      );
+      expect(ctxLogger.info).toHaveBeenCalledWith(expect.stringContaining('(encontrado: 1'));
     });
 
     it('logga nao encontrado no finish listener', async () => {
@@ -351,6 +386,58 @@ describe('Search Routes', () => {
       expect(res.body.error).toBe('Busca nao encontrada ou ja finalizada');
     });
 
+    it('cancela busca ativa com sucesso', async () => {
+      const server = http.createServer(app);
+      await new Promise((r) => server.listen(0, r));
+      try {
+        mockService.findFileAndGetSignedUrl.mockImplementation(
+          (_pasta, _nome, _log, _onProgress, signal) =>
+            new Promise((resolve) => {
+              if (signal?.aborted) { resolve(null); return; }
+              signal?.addEventListener('abort', () => resolve(null), { once: true });
+            }),
+        );
 
+        const port = server.address().port;
+        const tokenPromise = new Promise((resolve, reject) => {
+          const postData = JSON.stringify({ pasta: '2024/01/02', nomeProtocolo: '12345' });
+          const options = {
+            hostname: 'localhost',
+            port,
+            method: 'POST',
+            path: '/buscar-arquivo',
+            headers: {
+              Authorization: `Bearer ${makeToken()}`,
+              Accept: 'text/event-stream',
+              'Content-Type': 'application/json',
+            },
+          };
+          const req = http.request(options, (res) => {
+            let buf = '';
+            let done = false;
+            res.on('data', (chunk) => {
+              buf += chunk;
+              if (done) return;
+              const m = buf.match(/"token":"([^"]+)"/);
+              if (m) { done = true; resolve(m[1]); }
+            });
+            res.on('error', reject);
+          });
+          req.write(postData);
+          req.end();
+          setTimeout(() => reject(new Error('timeout capturing token')), 3000);
+        });
+
+        const token = await tokenPromise;
+        const cancelRes = await request(app)
+          .post(`/cancel-search/${token}`)
+          .set('Authorization', `Bearer ${makeToken()}`);
+
+        expect(cancelRes.status).toBe(200);
+        expect(cancelRes.body.message).toBe('Busca cancelada');
+      } finally {
+        server.close();
+      }
+    });
   });
 });
