@@ -43,23 +43,14 @@ async function findFiles(dirPath, targetName, signal, maxDepth, searchRoot, log 
     if (signal?.aborted) break;
 
     const [currentDir, depth] = stack.pop();
-    let items = null;
-    let lastError = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        items = await fs.readdir(currentDir, { withFileTypes: true, signal });
-        if (items && items.length > 0) break;
-      } catch (err) {
-        lastError = err;
-      }
-      if (attempt < 2) {
-        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
-      }
+    let items;
+    try {
+      items = await fs.readdir(currentDir, { withFileTypes: true, signal });
+    } catch (err) {
+      log.warn(`[findFiles] Falha ao ler "${currentDir}": ${err.message}`);
+      continue;
     }
-    if (!items || items.length === 0) {
-      if (lastError) {
-        log.warn(`[findFiles] Falha ao ler "${currentDir}" após 3 tentativas: ${lastError.message}`);
-      }
+    if (items.length === 0) {
       continue;
     }
 
@@ -133,21 +124,11 @@ async function quickReaddirSearch(dirPath, targetName, signal, maxDepth = 1, log
     if (signal?.aborted) break;
     const [currentDir, depth] = stack.pop();
 
-    let items = null;
-    let lastError = null;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        items = await fs.readdir(currentDir, { withFileTypes: true, signal });
-        break;
-      } catch (err) {
-        lastError = err;
-        if (attempt < 2) {
-          await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
-        }
-      }
-    }
-    if (!items) {
-      log.warn(`[quickReaddirSearch] Falha ao ler "${currentDir}" após 3 tentativas: ${lastError?.message}`);
+    let items;
+    try {
+      items = await fs.readdir(currentDir, { withFileTypes: true, signal });
+    } catch (err) {
+      log.warn(`[quickReaddirSearch] Falha ao ler "${currentDir}": ${err.message}`);
       continue;
     }
     if (items.length === 0) continue;
