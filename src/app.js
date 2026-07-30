@@ -2,8 +2,10 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
+import swaggerUi from 'swagger-ui-express';
 import { initDatabase } from './db/sqlite.js';
 import { securityHeaders } from './utils/securityHeaders.js';
+import { swaggerSpec } from './swagger/index.js';
 import { createAuthRoutes } from './routes/auth.js';
 import { createSearchRoutes } from './routes/search.js';
 import { createDownloadRoutes } from './routes/download.js';
@@ -34,6 +36,12 @@ export async function createApp(searchableService) {
   });
 
   await initDatabase();
+
+  app.use(
+    '/api-docs',
+    swaggerUi.serve,
+    swaggerUi.setup(swaggerSpec, { customCss: '.swagger-ui .topbar { display: none }' }),
+  );
 
   app.use(express.static(path.resolve(__dirname, '..', 'public')));
 

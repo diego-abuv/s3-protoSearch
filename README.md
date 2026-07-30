@@ -6,6 +6,7 @@
   <img src="https://img.shields.io/badge/Docker-Ready-blue?style=for-the-badge&logo=docker" alt="Docker">
   <img src="https://img.shields.io/badge/Redis-7.x-red?style=for-the-badge&logo=redis" alt="Redis">
   <img src="https://img.shields.io/badge/Fallback-Local-brightgreen?style=for-the-badge" alt="Fallback">
+  <img src="https://img.shields.io/badge/OpenAPI-3.1-blue?style=for-the-badge&logo=swagger" alt="OpenAPI">
 </p>
 
 Aplicação web containerizada para busca unificada de arquivos de áudio/documentos. Primeiro consulta um bucket S3; se houver falha ou arquivo não encontrado, faz fallback automático para diretório local.
@@ -55,7 +56,7 @@ Aplicação web containerizada para busca unificada de arquivos de áudio/docume
 - **Componentes sem CDN**: Bootstrap servido localmente, zero dependência externa no frontend.
 - **Cache Redis por prefixo S3**: Listagens S3 cacheadas por prefixo (TTL 300s), evitando chamadas repetidas ao bucket para arquivos na mesma data. Fallback silencioso se Redis indisponível.
 - **Dedup de buscas concorrentes**: Buscas idênticas aguardam a Promise existente em vez de duplicar requisições.
-- **Timeouts por fase**: Tempos separados para readdir rápido (240s) e findFiles (300s), com timeout global de 900s. Cada fase tem seu próprio AbortController.
+- **Timeouts por fase**: Tempos separados para leitura de diretório (600s) e busca recursiva (600s), com timeout global de 30min (1.800s). Cada fase tem seu próprio AbortController.
 
 ---
 
@@ -272,6 +273,15 @@ s3-protoSearch/
 │   │   ├── unifiedSearchService.js   # S3 → Local
 │   │   ├── s3SearchService.js        # Busca S3 + signed URLs
 │   │   └── localSearchService.js     # Busca em diretório local (streaming opendir)
+│   ├── swagger/
+│   │   ├── index.js                  # Montagem do spec OpenAPI 3.1
+│   │   ├── schemas.js                # Schemas reutilizáveis
+│   │   ├── security.js               # Security schemes
+│   │   └── paths/                    # Paths por grupo de rota
+│   │       ├── auth.paths.js
+│   │       ├── search.paths.js
+│   │       ├── download.paths.js
+│   │       └── admin.paths.js
 │   └── utils/
 │       ├── errorCodes.js             # Tradução de erros
 │       ├── retry.js                  # Exponential backoff
@@ -312,164 +322,70 @@ s3-protoSearch/
 
 ## API
 
-### Autenticação
+A especificação completa e interativa está disponível em **`/api-docs`** (Swagger UI) com o servidor rodando.
 
-#### `POST /login`
+### Rotas
 
-```json
-{ "username": "admin", "password": "admin" }
-```
+| Método | Rota | Auth | Descrição |
+|--------|------|------|-----------|
+| `POST` | `/login` | — | Autenticar e obter JWT |
+| `POST` | `/refresh` | Cookie `refresh_token` | Renovar access token |
+| `POST` | `/logout` | Bearer / x-api-key | Encerrar sessão |
+| `GET` | `/me` | Bearer / x-api-key | Dados do usuário atual |
+| `POST` | `/register` | `adminKey` no body | Criar novo usuário |
+| `POST` | `/buscar-arquivo` | Bearer / x-api-key | Buscar arquivo (SSE ou JSON) |
+| `POST` | `/cancel-search/{token}` | Bearer / x-api-key | Cancelar busca SSE |
+| `GET` | `/download-local` | Bearer / x-api-key | Baixar do sistema local |
+| `GET` | `/download-s3` | Bearer / x-api-key | Baixar do S3 |
+| `GET` | `/admin/users` | Bearer (admin) | Listar usuários |
+| `POST` | `/admin/users` | Bearer (admin) | Criar usuário |
+| `PATCH` | `/admin/users/{id}` | Bearer (admin) | Atualizar usuário |
+| `DELETE` | `/admin/users/{id}` | Bearer (admin) | Excluir usuário |
+| `PATCH` | `/admin/users/{id}/block` | Bearer (admin) | Bloquear/desbloquear |
+| `POST` | `/admin/users/{id}/force-logout` | Bearer (admin) | Revogar sessões |
+| `POST` | `/admin/users/{id}/reset-password` | Bearer (admin) | Redefinir senha |
+| `GET` | `/admin/audit` | Bearer (admin) | Audit log paginado |
+| `GET` | `/admin/audit/export` | Bearer (admin) | Exportar audit CSV |
+| `GET` | `/admin/stats` | Bearer (admin) | Estatísticas gerais |
+| `GET` | `/admin/stats/chart` | Bearer (admin) | Buscas dos últimos 7 dias |
 
-**200:**
-```json
-{ "access_token": "eyJ...", "expires_in": 900 }
-```
-Define o cookie `refresh_token` (httpOnly, secure, sameSite=strict) com duração de 2,5 horas.
-
-#### `POST /refresh`
-(Não requer body — lê o `refresh_token` do cookie)
-
-**200:**
-```json
-{ "access_token": "eyJ...", "expires_in": 900 }
-```
-
-#### `POST /logout`
-(Requer `Authorization: Bearer <access_token>`)
-
-**200:** 
-```json
-{ "message": "Logout realizado" }`
-```
-
-#### `GET /me`
-(Requer `Authorization: Bearer <access_token>`)
-
-**200:**
-```json
-{ "id": 1, "username": "admin", "role": "admin" }
-```
-
-#### `POST /register`
-(Requer `adminKey` mestra para criar usuários — rate limit 3/min)
-
-```json
-{ "username": "novouser", "password": "senha123", "adminKey": "chave-mestra" }
-```
-
----
-
-### Busca
-
-#### `POST /buscar-arquivo`
-(Requer `Authorization: Bearer <access_token>` ou `x-api-key` — rate limit 30/min)
-
-```json
-{ "pasta": "2024-01-05", "nomeProtocolo": "protocolo" }
-```
-
-**200 — Arquivo encontrado no S3:**
-```json
-{
-  "encontrado": true,
-  "arquivos": [{ "downloadUrl": "https://...", "nomeParaDownload": "protocolo-0001.mp3" }],
-  "status": { "s3": "ok", "local": "nao_consultado" }
-}
-```
-
-**200 — Fallback local atuou:**
-```json
-{
-  "encontrado": true,
-  "arquivos": [{ "downloadUrl": "/download-local?file=...", "nomeParaDownload": "protocolo-0001.mp3" }],
-  "status": { "s3": "nao_encontrado", "local": "ok" }
-}
-```
-
-**404 — Não encontrado em nenhuma fonte:**
-```json
-{
-  "encontrado": false,
-  "arquivos": null,
-  "status": { "s3": "nao_encontrado", "local": "nao_encontrado" }
-}
-```
-
-#### `GET /download-local`
-(Requer `Authorization: Bearer <access_token>` ou `x-api-key` — protegido contra path traversal)
-
-```
-?file=/sharepoint/arquivo.mp3
-```
-
-#### `GET /download-s3`
-(Requer `Authorization: Bearer <access_token>` ou `x-api-key`)
-
-```
-?key=2024/01/02/arquivo.mp3&nome=arquivo.mp3
-```
-
-- `key`: Caminho S3 do arquivo (obrigatório)
-- `nome`: Nome personalizado para download (opcional, header Content-Disposition)
-- Retorna **200** com stream do arquivo ou **500** em caso de erro S3
-
----
-
-### Administração (requer role `admin`)
-
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| `GET` | `/admin/users` | Lista todos os usuários |
-| `POST` | `/admin/users` | Cria usuário (body: `{ username, password, role }`) |
-| `PATCH` | `/admin/users/:id` | Atualiza usuário (body: `{ username?, password?, role? }`) |
-| `DELETE` | `/admin/users/:id` | Remove usuário |
-| `PATCH` | `/admin/users/:id/block` | Bloqueia/desbloqueia usuário |
-| `POST` | `/admin/users/:id/force-logout` | Revoga todas as sessões do usuário |
-| `POST` | `/admin/users/:id/reset-password` | Redefine senha de outro usuário (body: `{ password }`) |
-| `GET` | `/admin/audit` | Log de auditoria paginado |
-| `GET` | `/admin/audit/export` | Exporta audit log como CSV |
-| `GET` | `/admin/stats` | Estatísticas (total usuários, tokens ativos, ações) |
-| `GET` | `/admin/stats/chart` | Dados de buscas dos últimos 7 dias |
-
----
-
-### Matriz de Respostas (Busca)
+### Matriz de Respostas — `/buscar-arquivo`
 
 | `s3.status` | `local.status` | HTTP | Cenário |
 |-------------|---------------|------|---------|
-| `ok` | `nao_consultado` | **200** | S3 encontrou, fallback não foi necessário |
-| `nao_encontrado` | `ok` | **200** | S3 não tinha o arquivo, local encontrou |
-| `erro: ...` | `ok` | **200** | S3 indisponível, local assumiu |
-| `nao_encontrado` | `nao_encontrado` | **404** | Arquivo não existe em nenhuma fonte |
-| `erro: ...` | `erro: ...` | **404** | Ambas as fontes falharam |
+| `ok` | `nao_consultado` | **200** | S3 encontrou |
+| `nao_encontrado` | `ok` | **200** | Local encontrou (fallback) |
+| `erro: ...` | `ok` | **200** | S3 falhou, local assumiu |
+| `nao_encontrado` | `nao_encontrado` | **404** | Arquivo não existe |
+| `erro: ...` | `erro: ...` | **404** | Ambas fontes falharam |
 
-### Códigos HTTP
+### Códigos HTTP comuns
 
 | Código | Quando ocorre |
 |--------|--------------|
-| **400** | Campos obrigatórios ausentes ou senha fora do padrão |
-| **401** | Token ausente, inválido ou expirado |
-| **403** | Acesso negado (role insuficiente ou path traversal) |
-| **404** | Arquivo ou rota não encontrada |
-| **429** | Rate limit excedido (login: 5/min, register: 3/min, search: 30/min) |
-| **500** | Erro interno inesperado |
+| **400** | Campos obrigatórios ausentes |
+| **401** | Token ausente ou inválido |
+| **403** | Acesso negado |
+| **404** | Recurso não encontrado |
+| **429** | Rate limit excedido |
+| **500** | Erro interno |
 
-### Erros AWS S3 — tradução
+### Tradução de erros AWS → usuário
 
-| Erro original | Mensagem amigável |
-|--------------|-------------------|
-| `timeout` / `timed out` | A requisição excedeu o tempo limite. Tente novamente. |
-| `access denied` / `accessdenied` | Acesso negado. Verifique as permissões. |
-| `network` / `econnrefused` / `enotfound` | Erro de rede. Verifique sua conexão. |
-| `notfound` / `nosuchkey` / `no such key` | Arquivo não encontrado. |
-| *(qualquer outro)* | Ocorreu um erro inesperado. |
+| Erro S3 | Mensagem exibida |
+|---------|-----------------|
+| `timeout` / `timed out` | A requisição excedeu o tempo limite. |
+| `access denied` | Acesso negado. Verifique as permissões. |
+| `network` / `econnrefused` | Erro de rede. Verifique sua conexão. |
+| `notfound` / `nosuchkey` | Arquivo não encontrado. |
+| *(outros)* | Ocorreu um erro inesperado. |
 
-### Erros Locais
+### Erros de sistema local
 
 | Erro | Mensagem |
 |------|----------|
 | `EACCES` / `EPERM` | Permissão negada ao acessar o servidor local. |
-| Nenhum caminho acessível | Nenhum servidor local está acessível no momento. |
+| sem caminhos acessíveis | Nenhum servidor local está acessível no momento. |
 
 ---
 
@@ -548,7 +464,7 @@ docker compose up -d --build
 ```bash
 curl -k -X POST https://s3-protosearch.local/register \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"Mudar@123456","adminKey":"SUA_ADMIN_KEY"}'
+  -d '{"username":"admin","password":"SenhaForte@123","adminKey":"SUA_ADMIN_KEY"}'
 ```
 
 ### 6. Acesso DNS
@@ -607,7 +523,7 @@ npm run dev                     # Node --watch com auto-restart
 
 ## Testes
 
-**252 testes — 14 arquivos — Vitest + Supertest**
+**260 testes — 14 arquivos — Vitest + Supertest**
 
 | Comando | Descrição |
 |---------|-----------|
