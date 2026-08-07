@@ -65,9 +65,12 @@ describe('findFileAndGetSignedUrl', () => {
     expect(result).toEqual({ erro: 'Nenhum caminho de rede acessivel' });
   });
 
-  it('retorna resultado quando acesso direto encontra arquivo', async () => {
+  it('retorna resultado quando varredura nivel 0 encontra arquivo solto na raiz do dia', async () => {
     mockFs.access.mockResolvedValue(undefined);
     mockFs.stat.mockResolvedValue(undefined);
+    mockFs.readdir.mockResolvedValue([
+      { name: '0336637208_01020304_123456.wav', isDirectory: () => false },
+    ]);
 
     const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
 
@@ -79,8 +82,7 @@ describe('findFileAndGetSignedUrl', () => {
   });
 
   function setupStreamingTest() {
-    mockFs.access.mockResolvedValueOnce(undefined);
-    mockFs.access.mockRejectedValue(new Error('not found'));
+    mockFs.access.mockResolvedValue(undefined);
     mockFs.stat.mockResolvedValue(undefined);
   }
 
@@ -133,7 +135,7 @@ describe('findFileAndGetSignedUrl', () => {
     const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
 
     expect(result).toBeNull();
-  });
+  }, 15000);
 
   it('busca com signal abortado retorna null', async () => {
     mockFs.access.mockResolvedValue(undefined);

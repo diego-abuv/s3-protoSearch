@@ -3,8 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../utils/logger.js';
 
-const QUICK_READDIR_TIMEOUT_MS = 600_000;
-const FIND_FILES_TIMEOUT_MS = 600_000;
+const SCAN_LEVEL0_TIMEOUT_MS = 600_000;
 
 function getPathConfigsForYear(anoBusca) {
   const configs = [];
@@ -34,51 +33,6 @@ function getPathConfigsForYear(anoBusca) {
   return configs;
 }
 
-async function findFiles(dirPath, targetName, signal, maxDepth, searchRoot, log = logger) {
-  const stack = [[dirPath, 0]];
-  const results = [];
-  let foundDepth = Infinity;
-
-  while (stack.length > 0) {
-    if (signal?.aborted) break;
-
-    const [currentDir, depth] = stack.pop();
-    let items;
-    try {
-      items = await fs.readdir(currentDir, { withFileTypes: true, signal });
-    } catch (err) {
-      log.warn(`[findFiles] Falha ao ler "${currentDir}": ${err.message}`);
-      continue;
-    }
-    if (items.length === 0) {
-      continue;
-    }
-
-    for (const item of items) {
-      if (signal?.aborted) break;
-      const fullPath = path.join(currentDir, item.name);
-
-      if (item.isDirectory()) {
-        if (depth < Math.min(maxDepth, foundDepth - 1)) {
-          stack.push([fullPath, depth + 1]);
-        }
-      } else {
-        const fileBase = path.parse(item.name).name;
-        const nomeBase = fileBase.toLowerCase();
-
-        if (nomeBase.includes(targetName)) {
-          results.push(fullPath);
-          foundDepth = depth + 1;
-        }
-      }
-    }
-  }
-
-  return results;
-}
-
-const LOCAL_SEARCH_EXTENSIONS = ['.mp3', '.wav', '.mp4', '.pdf', '.ogg', '.wma', '.avi', '.txt'];
-
 const SERVER_NAMES = {
   '192-168-0-254': 'AD-MBE',
   '192-168-16-74': 'STORAGE',
@@ -93,64 +47,31 @@ function getShareFriendlyName(searchRoot) {
   return match ? `Servidor ${match[1]}` : 'Servidor';
 }
 
-function raceToFirstResult(promises) {
-  return new Promise((resolve) => {
-    let settled = false;
+async function scanDayDir(dirPath, targetName, signal, log = logger) {
+  const nivel0 = [];
+  const hourDirs = [];
+  let items;
+  try {
+    items = await fs.readdir(dirPath, { withFileTypes: true, signal });
+  } catch (err) {
+    log.warn(`[scanDayDir] Falha ao ler "${dirPath}": ${err.message}`);
+    return { nivel0, hourDirs };
+  }
+  if (items.length === 0) return { nivel0, hourDirs };
 
-    for (const p of promises) {
-      p.then((result) => {
-        if (settled) return;
-        if (result) {
-          settled = true;
-          resolve(result);
-        }
-      }).catch(() => {});
-    }
-
-    Promise.allSettled(promises).then(() => {
-      if (!settled) {
-        settled = true;
-        resolve(null);
-      }
-    });
-  });
-}
-
-async function quickReaddirSearch(dirPath, targetName, signal, maxDepth = 1, log = logger) {
-  const results = [];
-  const stack = [[dirPath, 0]];
-
-  while (stack.length > 0) {
+  for (const item of items) {
     if (signal?.aborted) break;
-    const [currentDir, depth] = stack.pop();
-
-    let items;
-    try {
-      items = await fs.readdir(currentDir, { withFileTypes: true, signal });
-    } catch (err) {
-      log.warn(`[quickReaddirSearch] Falha ao ler "${currentDir}": ${err.message}`);
-      continue;
-    }
-    if (items.length === 0) continue;
-
-    for (const item of items) {
-      if (signal?.aborted) break;
-      const fullPath = path.join(currentDir, item.name);
-
-      if (item.isDirectory()) {
-        if (depth < maxDepth) {
-          stack.push([fullPath, depth + 1]);
-        }
-      } else {
-        const nomeBase = path.parse(item.name).name.toLowerCase();
-        if (nomeBase.includes(targetName)) {
-          results.push(fullPath);
-        }
+    if (item.isDirectory()) {
+      hourDirs.push(path.join(dirPath, item.name));
+    } else {
+      const nomeBase = path.parse(item.name).name.toLowerCase();
+      if (nomeBase.includes(targetName)) {
+        nivel0.push(path.join(dirPath, item.name));
       }
     }
   }
 
-  return results;
+  return { nivel0, hourDirs };
 }
 
 export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger, externalSignal, onProgress) {
@@ -209,183 +130,119 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
       onProgress?.({ type: 'local_share', message: `Escaneando ${getShareFriendlyName(searchRoot)}...` });
       const t0 = performance.now();
 
-      const shareAbort = new AbortController();
+      const acessiveis = [];
+      for (const prefixo of prefixosUnicos) {
+        if (externalSignal?.aborted) break;
+        const fullPath = path.join(searchRoot, prefixo);
+        log.info(`Testando caminho: ${prefixo}`);
 
-      const promessas = prefixosUnicos.map(async (prefixo) => {
+        const tStat = performance.now();
         try {
-          const fullPath = path.join(searchRoot, prefixo);
-          log.info(`Testando caminho: ${prefixo}`);
-
-          const tStat = performance.now();
-          try {
-            await Promise.race([
-              fs.stat(fullPath),
-              new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
-            ]);
-            log.info(`   [TIMING] ${prefixo}: OK (${(performance.now() - tStat).toFixed(0)}ms)`);
-          } catch {
-            log.info(`   [TIMING] ${prefixo}: inacessível (${(performance.now() - tStat).toFixed(0)}ms)`);
-            return null;
-          }
-
-          for (const ext of LOCAL_SEARCH_EXTENSIONS) {
-            if (externalSignal?.aborted) return null;
-            const directPath = path.join(fullPath, nomeProtocolo + ext);
-            try {
-              await Promise.race([
-                fs.access(directPath),
-                new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
-              ]);
-              log.success(`   [DIRECT] Arquivo encontrado via acesso direto: ${directPath}`);
-
-              shareAbort.abort();
-              const relativePath = path.relative(relativeBasePath, directPath);
-              const pathKey = relativePath.replace(/\\/g, '/');
-              const nomeParaDownload = path.basename(pathKey);
-              const downloadUrl = `/download-local?file=${encodeURIComponent(directPath)}`;
-
-              log.success(`Arquivo encontrado! Chave: ${pathKey}`);
-              return [{ downloadUrl, nomeParaDownload }];
-            } catch {
-              /* arquivo não existe com essa extensão */
-            }
-          }
-
-          if (!externalSignal?.aborted) {
-            let hourDirs;
-            try {
-              const dateEntries = await fs.readdir(fullPath, { withFileTypes: true, signal: externalSignal });
-              hourDirs = dateEntries.filter((d) => d.isDirectory()).map((d) => path.join(fullPath, d.name));
-            } catch (err) {
-              log.warn(`[streaming] Falha ao listar horas em "${fullPath}": ${err.message}`);
-              hourDirs = [];
-            }
-
-            for (const hourDir of hourDirs) {
-              if (externalSignal?.aborted) break;
-              let dir = null;
-              let lastOpenError = null;
-              for (let attempt = 0; attempt < 3; attempt++) {
-                try {
-                  dir = await fs.opendir(hourDir);
-                  break;
-                } catch (err) {
-                  lastOpenError = err;
-                  if (attempt < 2) {
-                    await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
-                  }
-                }
-              }
-              if (!dir) {
-                log.warn(`[streaming] Falha ao abrir "${hourDir}" após 3 tentativas: ${lastOpenError?.message}`);
-                continue;
-              }
-              try {
-                let entry;
-                const fastMatches = [];
-                try {
-                  while ((entry = await dir.read()) !== null) {
-                    if (externalSignal?.aborted) break;
-                    if (entry.isDirectory()) continue;
-                    const nomeBase = path.parse(entry.name).name.toLowerCase();
-                    if (nomeBase.includes(termoBuscado)) {
-                      fastMatches.push(entry);
-                    }
-                  }
-                } catch (err) {
-                  log.warn(
-                    `[streaming] Erro ao ler entradas de "${hourDir}": ${err.message} (parcial: ${fastMatches.length} match(es) até o momento)`,
-                  );
-                }
-
-                if (fastMatches.length > 0) {
-                  shareAbort.abort();
-                  const results = fastMatches.map((entry) => {
-                    const hitPath = path.join(hourDir, entry.name);
-                    log.success(`   [FAST] Arquivo encontrado: ${hitPath}`);
-                    const relativePath = path.relative(relativeBasePath, hitPath);
-                    const pathKey = relativePath.replace(/\\/g, '/');
-                    const nomeParaDownload = path.basename(pathKey);
-                    const downloadUrl = `/download-local?file=${encodeURIComponent(hitPath)}`;
-                    log.success(`Arquivo encontrado! Chave: ${pathKey}`);
-                    log.info(`Arquivo físico em: ${hitPath}`);
-                    return { downloadUrl, nomeParaDownload };
-                  });
-                  return results;
-                }
-              } finally {
-                await dir.close();
-              }
-            }
-          }
-
-          if (!externalSignal?.aborted) {
-            const quickAbort = new AbortController();
-            const quickTimer = setTimeout(() => quickAbort.abort(), QUICK_READDIR_TIMEOUT_MS);
-            const quickSignals = [quickAbort.signal];
-            if (externalSignal) quickSignals.push(externalSignal);
-            const quickSignal = AbortSignal.any(quickSignals);
-
-            const tQuick = performance.now();
-            const quickResults = await quickReaddirSearch(fullPath, termoBuscado, quickSignal, 1, log);
-            clearTimeout(quickTimer);
-            log.info(
-              `   [TIMING] ${prefixo}: quickReaddir: ${(performance.now() - tQuick).toFixed(0)}ms (encontrados ${quickResults.length})`,
-            );
-
-            if (quickResults.length > 0) {
-              shareAbort.abort();
-              return quickResults.map((fp) => {
-                const relativePath = path.relative(relativeBasePath, fp);
-                const pathKey = relativePath.replace(/\\/g, '/');
-                const nomeParaDownload = path.basename(pathKey);
-                const downloadUrl = `/download-local?file=${encodeURIComponent(fp)}`;
-                log.success(`Arquivo encontrado via readdir! Chave: ${pathKey}`);
-                log.info(`Arquivo físico em: ${fp}`);
-                return { downloadUrl, nomeParaDownload };
-              });
-            }
-          }
-
-          if (!externalSignal?.aborted) {
-            const findAbort = new AbortController();
-            const findTimer = setTimeout(() => findAbort.abort(), FIND_FILES_TIMEOUT_MS);
-            const findSignals = [findAbort.signal];
-            if (externalSignal) findSignals.push(externalSignal);
-            const findSignal = AbortSignal.any(findSignals);
-
-            const tFind = performance.now();
-            const foundFiles = await findFiles(fullPath, termoBuscado, findSignal, 3, searchRoot, log);
-            clearTimeout(findTimer);
-            log.info(
-              `   [TIMING] ${prefixo}: findFiles: ${(performance.now() - tFind).toFixed(0)}ms (encontrados ${foundFiles.length} arquivos)`,
-            );
-
-            if (foundFiles.length === 0) {
-              return null;
-            }
-
-            shareAbort.abort();
-            return foundFiles.map((fp) => {
-              const relativePath = path.relative(relativeBasePath, fp);
-              const pathKey = relativePath.replace(/\\/g, '/');
-              const nomeParaDownload = path.basename(pathKey);
-              const downloadUrl = `/download-local?file=${encodeURIComponent(fp)}`;
-              log.success(`Arquivo encontrado! Chave: ${pathKey}`);
-              log.info(`Arquivo físico em: ${fp}`);
-              log.info(`URL de download: ${downloadUrl}`);
-              return { downloadUrl, nomeParaDownload };
-            });
-          }
-
-          return null;
-        } catch (err) {
-          log.error(`[${prefixo}] Erro interno na busca local: ${err.message}`);
-          return null;
+          await Promise.race([
+            fs.stat(fullPath),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+          ]);
+          log.info(`   [TIMING] ${prefixo}: OK (${(performance.now() - tStat).toFixed(0)}ms)`);
+          acessiveis.push(prefixo);
+        } catch {
+          log.info(`   [TIMING] ${prefixo}: inacessível (${(performance.now() - tStat).toFixed(0)}ms)`);
         }
-      });
+      }
 
-      const resultado = await raceToFirstResult(promessas);
+      let resultado = null;
+
+      for (const prefixo of acessiveis) {
+        if (externalSignal?.aborted) break;
+        const fullPath = path.join(searchRoot, prefixo);
+
+        const dayAbort = new AbortController();
+        const dayTimer = setTimeout(() => dayAbort.abort(), SCAN_LEVEL0_TIMEOUT_MS);
+        const daySignals = [dayAbort.signal];
+        if (externalSignal) daySignals.push(externalSignal);
+        const daySignal = AbortSignal.any(daySignals);
+
+        const tDay = performance.now();
+        const { nivel0, hourDirs } = await scanDayDir(fullPath, termoBuscado, daySignal, log);
+        log.info(
+          `   [TIMING] ${prefixo}: scanDayDir: ${(performance.now() - tDay).toFixed(0)}ms (nivel0: ${nivel0.length}, horas: ${hourDirs.length})`,
+        );
+
+        if (nivel0.length > 0) {
+          resultado = nivel0.map((fp) => {
+            const relativePath = path.relative(relativeBasePath, fp);
+            const pathKey = relativePath.replace(/\\/g, '/');
+            const nomeParaDownload = path.basename(pathKey);
+            const downloadUrl = `/download-local?file=${encodeURIComponent(fp)}`;
+            log.success(`Arquivo encontrado via readdir! Chave: ${pathKey}`);
+            log.info(`Arquivo físico em: ${fp}`);
+            return { downloadUrl, nomeParaDownload };
+          });
+          clearTimeout(dayTimer);
+          break;
+        }
+
+        if (!externalSignal?.aborted) {
+          for (const hourDir of hourDirs) {
+            if (externalSignal?.aborted) break;
+            let dir = null;
+            let lastOpenError = null;
+            for (let attempt = 0; attempt < 3; attempt++) {
+              try {
+                dir = await fs.opendir(hourDir);
+                break;
+              } catch (err) {
+                lastOpenError = err;
+                if (attempt < 2) {
+                  await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
+                }
+              }
+            }
+            if (!dir) {
+              log.warn(`[streaming] Falha ao abrir "${hourDir}" após 3 tentativas: ${lastOpenError?.message}`);
+              continue;
+            }
+            try {
+              let entry;
+              const fastMatches = [];
+              try {
+                while ((entry = await dir.read()) !== null) {
+                  if (externalSignal?.aborted) break;
+                  if (entry.isDirectory()) continue;
+                  const nomeBase = path.parse(entry.name).name.toLowerCase();
+                  if (nomeBase.includes(termoBuscado)) {
+                    fastMatches.push(entry);
+                  }
+                }
+              } catch (err) {
+                log.warn(
+                  `[streaming] Erro ao ler entradas de "${hourDir}": ${err.message} (parcial: ${fastMatches.length} match(es) até o momento)`,
+                );
+              }
+
+              if (fastMatches.length > 0) {
+                resultado = fastMatches.map((entry) => {
+                  const hitPath = path.join(hourDir, entry.name);
+                  log.success(`   [FAST] Arquivo encontrado: ${hitPath}`);
+                  const relativePath = path.relative(relativeBasePath, hitPath);
+                  const pathKey = relativePath.replace(/\\/g, '/');
+                  const nomeParaDownload = path.basename(pathKey);
+                  const downloadUrl = `/download-local?file=${encodeURIComponent(hitPath)}`;
+                  log.success(`Arquivo encontrado! Chave: ${pathKey}`);
+                  log.info(`Arquivo físico em: ${hitPath}`);
+                  return { downloadUrl, nomeParaDownload };
+                });
+                break;
+              }
+            } finally {
+              await dir.close();
+            }
+          }
+        }
+
+        clearTimeout(dayTimer);
+
+        if (resultado || externalSignal?.aborted) break;
+      }
 
       log.info(`   [TIMING] Busca local resolvida em ${(performance.now() - t0).toFixed(0)}ms`);
 

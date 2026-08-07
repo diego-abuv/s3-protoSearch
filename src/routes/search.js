@@ -87,7 +87,7 @@ export function createSearchRoutes(searchableService) {
         } catch {
           /* connection already closed */
         }
-      }, 60_000);
+      }, 20_000);
 
       const cleanup = () => {
         clearInterval(heartbeatInterval);
