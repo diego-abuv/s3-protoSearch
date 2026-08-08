@@ -15,6 +15,15 @@ export function translateError(message) {
     return 'Erro de rede. Verifique sua conexão.';
   }
 
+  if (
+    lower.includes('ehostdown') ||
+    lower.includes('host is down') ||
+    lower.includes('ehostunreach') ||
+    lower.includes('host unreachable')
+  ) {
+    return 'Servidor de rede indisponível. Tente novamente.';
+  }
+
   if (lower.includes('notfound') || lower.includes('nosuchkey') || lower.includes('no such key')) {
     return 'Arquivo não encontrado.';
   }

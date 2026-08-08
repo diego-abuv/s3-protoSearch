@@ -137,6 +137,29 @@ describe('findFileAndGetSignedUrl', () => {
     expect(result).toBeNull();
   }, 15000);
 
+  it('retorna erro quando opendir de hora falha com EHOSTDOWN', async () => {
+    setupStreamingTest();
+
+    mockFs.opendir.mockRejectedValue(new Error('EHOSTDOWN: host is down, opendir /mnt/share/1999/1/2/9'));
+    mockFs.readdir.mockResolvedValue([
+      { name: '9', isDirectory: () => true },
+    ]);
+
+    const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
+
+    expect(result).toEqual({ erro: 'EHOSTDOWN: host is down, opendir /mnt/share/1999/1/2/9' });
+  });
+
+  it('retorna erro quando readdir do dia falha com EHOSTDOWN', async () => {
+    setupStreamingTest();
+
+    mockFs.readdir.mockRejectedValue(new Error('EHOSTDOWN: host is down, readdir /mnt/share/1999/1/2'));
+
+    const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
+
+    expect(result).toEqual({ erro: 'EHOSTDOWN: host is down, readdir /mnt/share/1999/1/2' });
+  });
+
   it('busca com signal abortado retorna null', async () => {
     mockFs.access.mockResolvedValue(undefined);
     mockFs.stat.mockResolvedValue(undefined);

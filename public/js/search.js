@@ -20,6 +20,12 @@ function showRetryButton(status) {
   card.appendChild(btn);
 }
 
+function hasNetworkError(status) {
+  return Boolean(
+    status && (status.local?.startsWith('erro:') || status.s3?.startsWith('erro:'))
+  );
+}
+
 dataInput.addEventListener('paste', (e) => {
   const text = (e.clipboardData || window.clipboardData).getData('text');
   if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) {
@@ -136,6 +142,10 @@ form.addEventListener('submit', async (event) => {
           if (finalData.error) {
             card.querySelector('.fs-6').textContent = 'Erro no servidor';
             card.querySelector('.text-secondary.small').textContent = finalData.error;
+          } else if (hasNetworkError(finalData.status)) {
+            card.querySelector('.fs-6').textContent = 'Resultado não confiável';
+            card.querySelector('.text-secondary.small').textContent =
+              'Sua busca não retornou um resultado confiável por problemas de conexão. Contate o administrador.';
           } else {
             card.querySelector('.fs-6').textContent = 'Arquivo não encontrado';
             card.querySelector('.text-secondary.small').textContent =
@@ -156,10 +166,23 @@ form.addEventListener('submit', async (event) => {
       resultadoDiv.innerHTML = '';
       const card = document.getElementById('tmpl-error-card').content.cloneNode(true);
 
+      let statusData = null;
+      try {
+        statusData = JSON.parse(raw).status;
+      } catch {
+        /* ignore */
+      }
+
       if (response.status === 404) {
-        card.querySelector('.fs-6').textContent = 'Arquivo não encontrado';
-        card.querySelector('.text-secondary.small').textContent =
-          'Nenhum arquivo encontrado para este protocolo nesta data.';
+        if (hasNetworkError(statusData)) {
+          card.querySelector('.fs-6').textContent = 'Resultado não confiável';
+          card.querySelector('.text-secondary.small').textContent =
+            'Sua busca não retornou um resultado confiável por problemas de conexão. Contate o administrador.';
+        } else {
+          card.querySelector('.fs-6').textContent = 'Arquivo não encontrado';
+          card.querySelector('.text-secondary.small').textContent =
+            'Nenhum arquivo encontrado para este protocolo nesta data.';
+        }
       } else {
         card.querySelector('.fs-6').textContent = 'Erro no servidor';
         card.querySelector('.text-secondary.small').textContent =

@@ -357,6 +357,7 @@ A especificação completa e interativa está disponível em **`/api-docs`** (Sw
 | `nao_encontrado` | `ok` | **200** | Local encontrou (fallback) |
 | `erro: ...` | `ok` | **200** | S3 falhou, local assumiu |
 | `nao_encontrado` | `nao_encontrado` | **404** | Arquivo não existe |
+| `nao_encontrado` | `erro: Servidor de rede indisponível. Tente novamente.` | **404** | Share CIFS fora (EHOSTDOWN/EDOWN) — resultado não confiável |
 | `erro: ...` | `erro: ...` | **404** | Ambas fontes falharam |
 
 ### Códigos HTTP comuns

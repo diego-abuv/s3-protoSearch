@@ -5,6 +5,14 @@ import { logger } from '../utils/logger.js';
 
 const SCAN_LEVEL0_TIMEOUT_MS = 600_000;
 
+const NETWORK_ERROR_CODES = new Set(['ehostdown', 'ehostunreach', 'enetdown', 'enetunreach', 'econnreset']);
+
+function isNetworkError(err) {
+  if (!err || err.name === 'AbortError') return false;
+  const code = String(err.code || '').toLowerCase();
+  return NETWORK_ERROR_CODES.has(code) || /host is down|host unreachable/i.test(err.message || '');
+}
+
 function getPathConfigsForYear(anoBusca) {
   const configs = [];
   const anoBuscaStr = anoBusca.toString();
@@ -55,7 +63,7 @@ async function scanDayDir(dirPath, targetName, signal, log = logger) {
     items = await fs.readdir(dirPath, { withFileTypes: true, signal });
   } catch (err) {
     log.warn(`[scanDayDir] Falha ao ler "${dirPath}": ${err.message}`);
-    return { nivel0, hourDirs };
+    return { nivel0, hourDirs, readError: err };
   }
   if (items.length === 0) return { nivel0, hourDirs };
 
@@ -162,10 +170,16 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
         const daySignal = AbortSignal.any(daySignals);
 
         const tDay = performance.now();
-        const { nivel0, hourDirs } = await scanDayDir(fullPath, termoBuscado, daySignal, log);
+        const { nivel0, hourDirs, readError } = await scanDayDir(fullPath, termoBuscado, daySignal, log);
         log.info(
           `   [TIMING] ${prefixo}: scanDayDir: ${(performance.now() - tDay).toFixed(0)}ms (nivel0: ${nivel0.length}, horas: ${hourDirs.length})`,
         );
+
+        if (readError && isNetworkError(readError) && !externalSignal?.aborted) {
+          clearTimeout(dayTimer);
+          log.error(`[scanDayDir] Falha de rede ao ler "${fullPath}": ${readError.message}`);
+          return { erro: readError.message };
+        }
 
         if (nivel0.length > 0) {
           resultado = nivel0.map((fp) => {
@@ -184,21 +198,16 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
         if (!externalSignal?.aborted) {
           for (const hourDir of hourDirs) {
             if (externalSignal?.aborted) break;
-            let dir = null;
-            let lastOpenError = null;
-            for (let attempt = 0; attempt < 3; attempt++) {
-              try {
-                dir = await fs.opendir(hourDir);
-                break;
-              } catch (err) {
-                lastOpenError = err;
-                if (attempt < 2) {
-                  await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
-                }
+            let dir;
+            try {
+              dir = await fs.opendir(hourDir);
+            } catch (err) {
+              if (isNetworkError(err)) {
+                clearTimeout(dayTimer);
+                log.error(`[streaming] Falha de rede ao abrir "${hourDir}": ${err.message}`);
+                return { erro: err.message };
               }
-            }
-            if (!dir) {
-              log.warn(`[streaming] Falha ao abrir "${hourDir}" após 3 tentativas: ${lastOpenError?.message}`);
+              log.warn(`[streaming] Falha ao abrir "${hourDir}": ${err.message}`);
               continue;
             }
             try {
