@@ -26,6 +26,20 @@ function hasNetworkError(status) {
   );
 }
 
+function buildCancelCard() {
+  const card = document.createElement('div');
+  card.className = 'result-card not-found';
+  card.innerHTML = `
+    <div class="d-flex align-items-start gap-3">
+      <div class="result-icon not-found-icon">&#10007;</div>
+      <div class="flex-grow-1 min-w-0">
+        <strong class="fs-6">Busca cancelada</strong>
+        <p class="mb-1 text-secondary small">A consulta foi cancelada pelo usuário.</p>
+      </div>
+    </div>`;
+  return card;
+}
+
 dataInput.addEventListener('paste', (e) => {
   const text = (e.clipboardData || window.clipboardData).getData('text');
   if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) {
@@ -77,9 +91,15 @@ form.addEventListener('submit', async (event) => {
   const cancelBtn = resultadoDiv.querySelector('.btn-cancel-search');
   if (cancelBtn) {
     cancelBtn.addEventListener('click', () => {
-      abortController.abort();
-      if (window.__searchToken) {
-        fetch('/cancel-search/' + window.__searchToken, { method: 'POST' }).catch(() => {});
+      const token = window.__searchToken;
+      if (token) {
+        Auth.authFetch('/cancel-search/' + token, { method: 'POST' })
+          .then((r) => {
+            if (!r.ok) abortController.abort();
+          })
+          .catch(() => abortController.abort());
+      } else {
+        abortController.abort();
       }
     });
   }
@@ -131,7 +151,9 @@ form.addEventListener('submit', async (event) => {
 
       if (finalData) {
         resultadoDiv.innerHTML = '';
-        if (finalData.encontrado && finalData.arquivos && finalData.arquivos.length > 0) {
+        if (finalData.status?.cancelado) {
+          resultadoDiv.appendChild(buildCancelCard());
+        } else if (finalData.encontrado && finalData.arquivos && finalData.arquivos.length > 0) {
           resultadoDiv.appendChild(buildResultHtml({
             encontrado: true,
             arquivos: finalData.arquivos,
@@ -222,16 +244,8 @@ form.addEventListener('submit', async (event) => {
     showRetryButton(data.status);
   } catch (err) {
     if (err.name === 'AbortError' || abortController?.signal.aborted) {
-      resultadoDiv.innerHTML = `
-        <div class="result-card not-found">
-          <div class="d-flex align-items-start gap-3">
-            <div class="result-icon not-found-icon">&#10007;</div>
-            <div class="flex-grow-1 min-w-0">
-              <strong class="fs-6">Busca cancelada</strong>
-              <p class="mb-1 text-secondary small">A consulta foi cancelada pelo usuário.</p>
-            </div>
-          </div>
-        </div>`;
+      resultadoDiv.innerHTML = '';
+      resultadoDiv.appendChild(buildCancelCard());
     } else {
       resultadoDiv.innerHTML = `
         <div class="result-card not-found">

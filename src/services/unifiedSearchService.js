@@ -85,16 +85,21 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey, externa
       const s3Result = await findInS3(pasta, nomeProtocolo, log);
       log.info(`   [TIMING] S3 retornou em ${((Date.now() - tS3) / 1000).toFixed(2)}s`);
       if (s3Result) {
-        log.success('Arquivo(os) encontrado(os) no S3.');
+        if (globalSignal.aborted) {
+          s3Status = 'cancelado';
+        } else {
+          log.success('Arquivo(os) encontrado(os) no S3.');
+          onProgress?.({ type: 's3_done', message: 'S3: concluído' });
+          log.section(`BUSCA FINALIZADA (${((Date.now() - inicio) / 1000).toFixed(2)}s)`);
+          const s3ResultObj = { arquivos: s3Result, status: { s3: 'ok', local: localStatus } };
+          await cacheSet(cacheKey, s3ResultObj, FOUND_CACHE_TTL);
+          return s3ResultObj;
+        }
+      } else {
+        log.info('S3: Nenhum arquivo encontrado.');
         onProgress?.({ type: 's3_done', message: 'S3: concluído' });
-        log.section(`BUSCA FINALIZADA (${((Date.now() - inicio) / 1000).toFixed(2)}s)`);
-        const s3ResultObj = { arquivos: s3Result, status: { s3: 'ok', local: localStatus } };
-        await cacheSet(cacheKey, s3ResultObj, FOUND_CACHE_TTL);
-        return s3ResultObj;
+        s3Status = 'nao_encontrado';
       }
-      log.info('S3: Nenhum arquivo encontrado.');
-      onProgress?.({ type: 's3_done', message: 'S3: concluído' });
-      s3Status = 'nao_encontrado';
     } catch (err) {
       log.error(`S3 indisponível ou falha de conexão: ${translateError(err.message)}`);
       log.error('Erro original S3:', err);
@@ -116,14 +121,19 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey, externa
 
       if (Array.isArray(localResult)) {
         if (localResult.length > 0) {
-          log.success(`Arquivo(os) encontrado(os) localmente (${localResult.length}).`);
-          log.section(`BUSCA FINALIZADA (${((Date.now() - inicio) / 1000).toFixed(2)}s)`);
-          const localResultObj = { arquivos: localResult, status: { s3: s3Status, local: 'ok' } };
-          await cacheSet(cacheKey, localResultObj, FOUND_CACHE_TTL);
-          return localResultObj;
+          if (globalSignal.aborted) {
+            log.warn('Arquivo(s) encontrado(s) localmente, mas a busca foi cancelada.');
+          } else {
+            log.success(`Arquivo(os) encontrado(os) localmente (${localResult.length}).`);
+            log.section(`BUSCA FINALIZADA (${((Date.now() - inicio) / 1000).toFixed(2)}s)`);
+            const localResultObj = { arquivos: localResult, status: { s3: s3Status, local: 'ok' } };
+            await cacheSet(cacheKey, localResultObj, FOUND_CACHE_TTL);
+            return localResultObj;
+          }
+        } else {
+          log.info('Local: Nenhum arquivo encontrado.');
+          localStatus = 'nao_encontrado';
         }
-        log.info('Local: Nenhum arquivo encontrado.');
-        localStatus = 'nao_encontrado';
       } else if (localResult && localResult.erro) {
         log.error(`Busca local impossibilitada: ${translateError(localResult.erro)}`);
         localStatus = `erro: ${translateError(localResult.erro)}`;
@@ -140,14 +150,21 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey, externa
       if (isTimeout) {
         log.warn('Busca interrompida (tempo limite excedido).');
         localStatus = 'erro: tempo limite excedido';
+      } else {
+        log.warn('Busca interrompida antes de concluir (cancelamento ou perda de conexão).');
+        localStatus = 'cancelado';
       }
     }
 
     const duracao = ((Date.now() - inicio) / 1000).toFixed(2);
     log.destaque(`FALHA: Arquivo não encontrado em nenhuma fonte.`);
     log.section(`BUSCA FINALIZADA (${duracao}s)`);
-    const nullResult = { arquivos: null, status: { s3: s3Status, local: localStatus } };
-    await cacheSet(cacheKey, nullResult, NULL_CACHE_TTL);
+    const cancelado = localStatus === 'cancelado';
+    const nullResult = {
+      arquivos: null,
+      status: { s3: s3Status, local: localStatus, ...(cancelado ? { cancelado: true } : {}) },
+    };
+    if (!cancelado) await cacheSet(cacheKey, nullResult, NULL_CACHE_TTL);
     return nullResult;
   } finally {
     clearTimeout(globalTimer);

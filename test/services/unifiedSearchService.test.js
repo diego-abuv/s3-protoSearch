@@ -180,7 +180,7 @@ describe('findFileAndGetSignedUrl', () => {
       });
   }
 
-  it('retorna erro de conexao perdida quando externalSignal abortado durante busca local', async () => {
+  it('retorna status cancelado quando externalSignal abortado durante busca local', async () => {
     const externalAbort = new AbortController();
 
     cacheGet.mockResolvedValue(null);
@@ -203,13 +203,13 @@ describe('findFileAndGetSignedUrl', () => {
     const result = await searchPromise;
 
     expect(result.arquivos).toBeNull();
-    expect(result.status.cancelado).toBeUndefined();
+    expect(result.status.cancelado).toBe(true);
     expect(result.status.s3).toBe('nao_encontrado');
-    expect(result.status.local).toBe('erro: Conexão perdida. Tente novamente.');
-    expect(cacheSet).toHaveBeenCalled();
+    expect(result.status.local).toBe('cancelado');
+    expect(cacheSet).not.toHaveBeenCalled();
   });
 
-  it('retorna erro de conexao perdida quando S3 falha e usuario cancela durante local', async () => {
+  it('retorna status cancelado quando S3 falha e usuario cancela durante local', async () => {
     const externalAbort = new AbortController();
 
     cacheGet.mockResolvedValue(null);
@@ -231,7 +231,8 @@ describe('findFileAndGetSignedUrl', () => {
 
     expect(result.arquivos).toBeNull();
     expect(result.status.s3).toContain('erro');
-    expect(result.status.local).toBe('erro: Conexão perdida. Tente novamente.');
+    expect(result.status.local).toBe('cancelado');
+    expect(result.status.cancelado).toBe(true);
   });
 
   it('usa NULL_CACHE_TTL=15 para resultado null', async () => {

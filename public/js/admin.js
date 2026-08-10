@@ -582,7 +582,7 @@ document.getElementById('auditTableBody').addEventListener('click', (e) => {
     const sv = document.getElementById('ad-servidores');
     if (s3 || local) {
       const statusClass = (v) => {
-        if (!v || v === 'nao_consultado') return 'skip';
+        if (!v || v === 'nao_consultado' || v === 'cancelado') return 'skip';
         if (v === 'ok') return 'ok';
         if (v === 'nao_encontrado') return 'miss';
         return 'err';

@@ -37,13 +37,14 @@ export function createSearchRoutes(searchableService) {
     const wantsSSE = req.headers.accept === 'text/event-stream';
     const start = performance.now();
     const ctxLogger = createContextLogger({ username: req.user.username });
+    let cancelledByUser = false;
 
     res.on('finish', () => {
       const meta = res.searchMeta;
       let suffix = '';
       if (meta) {
         if (meta.error) suffix = ` (erro: ${meta.error})`;
-        else if (meta.status?.cancelado) suffix = ' (cancelado)';
+        else if (meta.status?.cancelado) suffix = cancelledByUser ? ' (cancelado)' : ' (interrompida)';
         else {
           const parts = [];
           if (meta.status?.s3 && !['ok', 'encontrado'].includes(meta.status.s3)) parts.push(`s3=${meta.status.s3}`);
@@ -78,7 +79,12 @@ export function createSearchRoutes(searchableService) {
       res.flushHeaders();
 
       searchToken = crypto.randomUUID();
-      searchTokens.set(searchToken, externalAbort);
+      searchTokens.set(searchToken, {
+        controller: externalAbort,
+        onCancel: () => {
+          cancelledByUser = true;
+        },
+      });
       res.write(`event: searchToken\ndata: ${JSON.stringify({ token: searchToken })}\n\n`);
 
       const heartbeatInterval = setInterval(() => {
@@ -140,9 +146,13 @@ export function createSearchRoutes(searchableService) {
       const found = resultado.arquivos && resultado.arquivos.length > 0;
       const count = resultado.arquivos?.length || 0;
       const wasInterrupted = resultado.status?.local?.startsWith('erro:') || resultado.status?.s3?.startsWith('erro:');
+      const cancelado = Boolean(resultado.status?.cancelado);
+      let interrupcao = '';
+      if (cancelado) interrupcao = cancelledByUser ? ', cancelado=1' : ', interrompida=true';
+      else if (wasInterrupted) interrupcao = ', interrompida=true';
       const details =
         `encontrados=${count}, tempo=${elapsed}s, s3=${resultado.status.s3}, local=${resultado.status.local}` +
-        (wasInterrupted ? ', interrompida=true' : '');
+        interrupcao;
 
       logAudit({
         user_id: req.user.id,
@@ -217,11 +227,12 @@ export function createSearchRoutes(searchableService) {
   });
 
   router.post('/cancel-search/:token', authMiddleware, (req, res) => {
-    const abortController = searchTokens.get(req.params.token);
-    if (!abortController) {
+    const entry = searchTokens.get(req.params.token);
+    if (!entry) {
       return res.status(404).json({ error: 'Busca nao encontrada ou ja finalizada' });
     }
-    abortController.abort();
+    entry.onCancel();
+    entry.controller.abort();
     searchTokens.delete(req.params.token);
     res.json({ message: 'Busca cancelada' });
   });
