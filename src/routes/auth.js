@@ -8,12 +8,13 @@ import { logger } from '../utils/logger.js';
 import { validatePassword, validateUsername, sanitizeInput } from '../utils/validation.js';
 import { loginLimiter, authMiddleware } from '../middleware/auth.js';
 
-const JWT_SECRET = process.env.JWT_SECRET;
 const ACCESS_EXPIRES = '15m';
 const REFRESH_EXPIRES_HOURS = 2.5;
 
 function generateAccessToken(user) {
-  return jwt.sign({ id: user.id, username: user.username, role: user.role }, JWT_SECRET, { expiresIn: ACCESS_EXPIRES });
+  return jwt.sign({ id: user.id, username: user.username, role: user.role }, process.env.JWT_SECRET, {
+    expiresIn: ACCESS_EXPIRES,
+  });
 }
 
 function generateRefreshToken(userId) {

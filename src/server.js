@@ -1,5 +1,5 @@
-import { createApp } from './app.js';
 import 'dotenv/config';
+import { createApp } from './app.js';
 import os from 'os';
 import { logger } from './utils/logger.js';
 

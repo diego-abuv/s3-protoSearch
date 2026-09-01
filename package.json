@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "node --watch --watch-path=public src/server.js",
+    "dev": "node --watch --watch-path=src --watch-path=public src/server.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint src/",
@@ -27,7 +27,6 @@
     "ioredis": "^5.11.1",
     "jsonwebtoken": "^9.0.3",
     "sql.js": "^1.14.1",
-    "supertest": "^7.2.2",
     "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
@@ -37,6 +36,7 @@
     "eslint-plugin-prettier": "^5.5.6",
     "globals": "^17.6.0",
     "prettier": "^3.8.4",
+    "supertest": "^7.2.2",
     "vitest": "^4.1.10"
   }
 }

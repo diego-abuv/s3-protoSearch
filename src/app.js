@@ -20,6 +20,7 @@ export async function createApp(searchableService) {
   const app = express();
 
   app.disable('x-powered-by');
+  app.set('trust proxy', 1);
   app.use(express.json());
   app.use(cookieParser());
 
@@ -50,6 +51,5 @@ export async function createApp(searchableService) {
   app.use(createDownloadRoutes());
   app.use(createAdminRoutes());
 
-  app.set('trust proxy', 1);
   return app;
 }
