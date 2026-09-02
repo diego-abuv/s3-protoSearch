@@ -75,6 +75,8 @@ body {
   background-size: 200% 200%;
   animation: gradientShift 30s ease-in-out infinite;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 @keyframes gradientShift {
@@ -170,9 +172,9 @@ body {
 
 .theme-toggle {
   position: fixed;
-  top: 1rem;
-  right: 1rem;
-  z-index: 999;
+  top: 0.5rem;
+  right: 4.5rem;
+  z-index: 1002;
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 50%;
@@ -594,18 +596,28 @@ body {
   background: var(--status-err-bg);
 }
 
-/* Theme toggle desce quando navbar está presente */
+/* Theme toggle ao lado do botão de perfil */
 .navbar-glass ~ .theme-toggle {
-  top: 3.5rem;
+  top: 0.5rem;
 }
 
 /* ==============================
    Layout — Main, Footer
    ============================== */
 
-main, footer {
+main {
+  flex: 1;
   position: relative;
   z-index: 1;
+  padding-top: 4rem;
+  padding-bottom: 1rem;
+}
+
+footer {
+  position: relative;
+  z-index: 1;
+  padding-top: 4rem;
+  padding-bottom: 1rem;
 }
 
 /* ==============================
@@ -815,5 +827,104 @@ input[type="date"].is-invalid {
 #admin-page:not(.access-granted) .toast-container,
 #admin-page:not(.access-granted) .theme-toggle {
   display: none !important;
+}
+
+/* ==============================
+   Admin — Dashboard Grid
+   ============================== */
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+}
+
+.stat-card {
+  transition: box-shadow 0.3s ease;
+}
+
+.stat-card:hover {
+  box-shadow: 0 0 20px var(--glow-1);
+}
+
+.stat-icon {
+  font-size: 1.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+.chart-card {
+  /* min-height: 200px; */
+}
+
+.chart-card canvas {
+  width: 90%;
+  height: 80%;
+}
+
+.previews-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.preview-card .table-responsive {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1rem 0.5rem;
+}
+
+.preview-header h3 {
+  padding: 0;
+}
+
+/* ==============================
+   Admin — Pagination
+   ============================== */
+
+.pagination {
+  display: flex;
+  gap: 0.25rem;
+  justify-content: center;
+  padding: 0.75rem;
+}
+
+.pagination .btn {
+  min-width: 2rem;
+  font-size: 0.8rem;
+}
+
+/* ==============================
+   Admin — Responsive
+   ============================== */
+
+@media (max-width: 992px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
 }
 

@@ -39,15 +39,16 @@ const API = {
   },
 };
 
-let auditOffset = 0;
-const AUDIT_LIMIT = 20;
+let currentView = 'dashboard';
+let usersPage = 1;
+let auditPage = 1;
+const PAGE_SIZE = 20;
 let searchChartInstance = null;
 
 // ── Toast ──────────────────────────────────────────────
 function showToast(message, type = 'info', duration = 3000) {
   const container = document.getElementById('toastContainer');
   const id = 'toast-' + Date.now();
-  const bgClass = type === 'success' ? 'bg-success' : type === 'error' ? 'bg-danger' : 'bg-info';
   container.insertAdjacentHTML(
     'beforeend',
     `<div id="${id}" class="toast align-items-center text-bg-${type === 'success' ? 'success' : type === 'error' ? 'danger' : 'info'} border-0" role="alert">
@@ -75,62 +76,7 @@ function animateDownload(buttonEl) {
   setTimeout(() => arrow.remove(), 900);
 }
 
-// ── Stats ──────────────────────────────────────────────
-async function loadStats() {
-  try {
-    const data = await API.get('/admin/stats');
-    document.getElementById('statUsers').textContent = data.users;
-    document.getElementById('statLogs').textContent = data.audit_logs;
-    document.getElementById('statSearches').textContent = data.searches_today;
-    document.getElementById('statActiveUsers').textContent = data.active_users;
-  } catch (_e) {
-    ['statUsers', 'statLogs', 'statSearches', 'statActiveUsers'].forEach((id) => {
-      document.getElementById(id).textContent = 'Erro';
-    });
-  }
-}
-
-// ── Chart ──────────────────────────────────────────────
-async function loadChart() {
-  try {
-    const data = await API.get('/admin/stats/chart');
-    const labels = data.data.map((d) => d.day.slice(5));
-    const values = data.data.map((d) => d.total);
-
-    const ctx = document.getElementById('searchChart').getContext('2d');
-    if (searchChartInstance) searchChartInstance.destroy();
-    searchChartInstance = new Chart(ctx, {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [
-          {
-            label: 'Buscas',
-            data: values,
-            backgroundColor: 'rgba(0, 217, 255, 0.3)',
-            borderColor: 'rgba(0, 217, 255, 0.8)',
-            borderWidth: 1,
-            borderRadius: 4,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#888', font: { size: 11 } } },
-          y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#888', precision: 0 } },
-        },
-      },
-    });
-  } catch (_e) {
-    document.getElementById('searchChart').parentElement.innerHTML =
-      '<div class="text-center text-secondary py-4">Erro ao carregar grafico</div>';
-  }
-}
-
-// ── Usuarios ───────────────────────────────────────────
+// ── Formatadores ──────────────────────────────────────
 function formatToSP(utcDate) {
   if (!utcDate) return '-';
   const d = new Date(utcDate + 'Z');
@@ -151,51 +97,357 @@ function timeSince(dateStr) {
   return `ha ${days}d`;
 }
 
-async function loadUsers() {
+const ACTION_BADGES = {
+  search: 'badge-outline-info',
+  login: 'badge-outline-success',
+  logout: 'badge-outline-warning',
+  admin_create_user: 'badge-outline-danger',
+  admin_update_user: 'badge-outline-primary',
+  admin_delete_user: 'badge-outline-danger',
+  admin_block_user: 'badge-outline-danger',
+  admin_unblock_user: 'badge-outline-success',
+  admin_force_logout: 'badge-outline-warning',
+  admin_reset_password: 'badge-outline-primary',
+};
+
+function badgeForAction(action) {
+  return ACTION_BADGES[action] || 'badge-outline-secondary';
+}
+
+function resultBadge(details) {
+  if (!details) return '<span class="text-secondary">-</span>';
+  if (details.includes('cancelado=1')) return '<span class="badge badge-outline-secondary">Cancelado</span>';
+  const m = details.match(/encontrados=(\d+)/);
+  if (m && parseInt(m[1], 10) > 0) return '<span class="badge badge-outline-success">Encontrado</span>';
+  if (details.includes('interrompida=true')) return '<span class="badge badge-outline-danger">Erro</span>';
+  if (m && parseInt(m[1], 10) === 0) return '<span class="badge badge-outline-warning">Nao encontrado</span>';
+  if (details.startsWith('erro=')) return '<span class="badge badge-outline-danger">Erro</span>';
+  return '<span class="text-secondary">-</span>';
+}
+
+const ACTION_LABELS = {
+  search: 'Busca de arquivo',
+  login: 'Login',
+  logout: 'Logout',
+  admin_create_user: 'Criar usuario',
+  admin_update_user: 'Atualizar usuario',
+  admin_delete_user: 'Excluir usuario',
+  admin_block_user: 'Bloquear usuario',
+  admin_unblock_user: 'Desbloquear usuario',
+  admin_force_logout: 'Forcar logout',
+  admin_reset_password: 'Reset senha',
+};
+
+function labelForAction(action) {
+  return ACTION_LABELS[action] || action;
+}
+
+// ── View switching ────────────────────────────────────
+function switchView(view) {
+  currentView = view;
+  ['dashboard', 'users', 'audit'].forEach((v) => {
+    const el = document.getElementById(`view-${v}`);
+    if (el) el.classList.toggle('d-none', v !== view);
+  });
+
+  if (view === 'dashboard') {
+    loadDashboard();
+  } else if (view === 'users') {
+    loadUsersFull(1);
+  } else if (view === 'audit') {
+    loadAuditFull(1);
+  }
+}
+
+// ── Dashboard ─────────────────────────────────────────
+async function loadStats() {
+  try {
+    const data = await API.get('/admin/stats');
+    document.getElementById('statActiveUsers').textContent = data.active_users;
+    document.getElementById('statSearches').textContent = data.searches_today;
+    document.getElementById('statSuccessRate').textContent =
+      data.success_rate !== undefined ? `${data.success_rate}%` : '-';
+    document.getElementById('statAvgDuration').textContent =
+      data.avg_duration_s ? `${data.avg_duration_s.toFixed(1)}s` : '-';
+  } catch (_e) {
+    ['statActiveUsers', 'statSearches', 'statSuccessRate', 'statAvgDuration'].forEach((id) => {
+      document.getElementById(id).textContent = 'Erro';
+    });
+  }
+}
+
+async function loadChart() {
+  try {
+    const data = await API.get('/admin/stats/chart');
+    const labels = data.data.map((d) => d.day.slice(5));
+    const okValues = data.data.map((d) => d.ok || 0);
+    const errValues = data.data.map((d) => d.errors || 0);
+
+    const ctx = document.getElementById('searchChart').getContext('2d');
+    if (searchChartInstance) searchChartInstance.destroy();
+    searchChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Sucesso',
+            data: okValues,
+            borderColor: 'rgba(0, 217, 255, 0.9)',
+            backgroundColor: 'rgba(0, 217, 255, 0.15)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 3,
+            pointBackgroundColor: 'rgba(0, 217, 255, 0.9)',
+          },
+          {
+            label: 'Erros',
+            data: errValues,
+            borderColor: 'rgba(239, 68, 68, 0.9)',
+            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            fill: true,
+            tension: 0.3,
+            pointRadius: 3,
+            pointBackgroundColor: 'rgba(239, 68, 68, 0.9)',
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'top',
+            labels: { color: '#888', font: { size: 11 }, boxWidth: 12, padding: 12 },
+          },
+        },
+        scales: {
+          x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#888', font: { size: 11 } } },
+          y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#888', precision: 0 } },
+        },
+      },
+    });
+  } catch (_e) {
+    document.getElementById('searchChart').parentElement.innerHTML =
+      '<div class="text-center text-secondary py-4">Erro ao carregar grafico</div>';
+  }
+}
+
+// ── User row helpers ──────────────────────────────────
+function userRowHtml(u) {
+  return `
+    <tr>
+      <td>${u.id}</td>
+      <td>${escapeHtml(u.username)}</td>
+      <td><span class="badge ${u.role === 'admin' ? 'badge-outline-danger' : 'badge-outline-secondary'}">${escapeHtml(u.role)}</span></td>
+      <td>
+        ${u.is_online ? '<span class="badge badge-online">Online</span>' : '<span class="text-secondary small">Offline</span>'}
+        ${u.blocked ? ' <span class="badge badge-blocked">Bloqueado</span>' : ''}
+      </td>
+      <td class="text-nowrap">${escapeHtml(timeSince(u.last_login))}</td>
+      <td class="text-end text-nowrap">
+        <button class="btn btn-sm btn-outline-info me-1 btn-edit" data-id="${u.id}" data-username="${escapeHtml(u.username)}" data-role="${u.role}" title="Editar">&#9998;</button>
+        <button class="btn btn-sm btn-outline-secondary me-1 btn-force-logout" data-id="${u.id}" data-username="${escapeHtml(u.username)}" title="Forcar logout">&#128682;</button>
+        <button class="btn btn-sm ${u.blocked ? 'btn-outline-success' : 'btn-outline-danger'} me-1 btn-toggle-block" data-id="${u.id}" data-username="${escapeHtml(u.username)}" data-blocked="${u.blocked ? 1 : 0}" title="${u.blocked ? 'Desbloquear' : 'Bloquear'}">${u.blocked ? '&#128275;' : '&#128274;'}</button>
+        <button class="btn btn-sm btn-outline-danger btn-delete" data-id="${u.id}" data-username="${escapeHtml(u.username)}">&#128465;</button>
+      </td>
+    </tr>`;
+}
+
+function userRowCompactHtml(u) {
+  return `
+    <tr>
+      <td>${escapeHtml(u.username)}</td>
+      <td><span class="badge ${u.role === 'admin' ? 'badge-outline-danger' : 'badge-outline-secondary'}">${escapeHtml(u.role)}</span></td>
+      <td>
+        ${u.is_online ? '<span class="badge badge-online">Online</span>' : '<span class="text-secondary small">Offline</span>'}
+        ${u.blocked ? ' <span class="badge badge-blocked">Bloqueado</span>' : ''}
+      </td>
+      <td class="text-end text-nowrap">
+        <button class="btn btn-sm btn-outline-info me-1 btn-edit" data-id="${u.id}" data-username="${escapeHtml(u.username)}" data-role="${u.role}" title="Editar">&#9998;</button>
+        <button class="btn btn-sm ${u.blocked ? 'btn-outline-success' : 'btn-outline-danger'} me-1 btn-toggle-block" data-id="${u.id}" data-username="${escapeHtml(u.username)}" data-blocked="${u.blocked ? 1 : 0}" title="${u.blocked ? 'Desbloquear' : 'Bloquear'}">${u.blocked ? '&#128275;' : '&#128274;'}</button>
+      </td>
+    </tr>`;
+}
+
+function auditRowHtml(l) {
+  return `
+    <tr>
+      <td class="text-nowrap">${escapeHtml(formatToSP(l.created_at))}</td>
+      <td>${escapeHtml(l.username)}</td>
+      <td><span class="badge ${badgeForAction(l.action)}">${escapeHtml(labelForAction(l.action))}</span></td>
+      <td>${resultBadge(l.details)}</td>
+      <td><button class="btn btn-sm audit-info-btn" data-log='${escapeHtml(JSON.stringify(l))}' title="Ver detalhes"><i class="info-i">i</i></button></td>
+    </tr>`;
+}
+
+function auditRowCompactHtml(l) {
+  return `
+    <tr>
+      <td class="text-nowrap">${escapeHtml(formatToSP(l.created_at))}</td>
+      <td>${escapeHtml(l.username)}</td>
+      <td><span class="badge ${badgeForAction(l.action)}">${escapeHtml(labelForAction(l.action))}</span></td>
+      <td>${resultBadge(l.details)}</td>
+    </tr>`;
+}
+
+// ── Preview tables (dashboard) ────────────────────────
+async function loadUsersPreview() {
+  const tbody = document.getElementById('usersPreviewBody');
+  try {
+    const data = await API.get('/admin/users?limit=4&page=1');
+    if (!data.users.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-secondary py-2">Nenhum usuario</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.users.map(userRowCompactHtml).join('');
+
+    const userSelect = document.getElementById('auditFilterUser');
+    if (userSelect) {
+      const currentVal = userSelect.value;
+      userSelect.innerHTML = '<option value="">Todos</option>';
+      data.users.forEach((u) => {
+        userSelect.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(u.username)}">${escapeHtml(u.username)}</option>`);
+      });
+      userSelect.value = currentVal;
+    }
+  } catch (_e) {
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-2">Erro ao carregar</td></tr>';
+  }
+}
+
+async function loadAuditPreview() {
+  const tbody = document.getElementById('auditPreviewBody');
+  try {
+    const data = await API.get('/admin/audit?limit=5&offset=0');
+    if (!data.logs.length) {
+      tbody.innerHTML = '<tr><td colspan="4" class="text-center text-secondary py-2">Nenhum log</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.logs.map(auditRowCompactHtml).join('');
+  } catch (_e) {
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-2">Erro ao carregar</td></tr>';
+  }
+}
+
+async function loadDashboard() {
+  await Promise.all([loadStats(), loadChart(), loadUsersPreview(), loadAuditPreview()]);
+}
+
+// ── Full users table (expanded view) ──────────────────
+async function loadUsersFull(page) {
+  usersPage = page;
   const tbody = document.getElementById('usersTableBody');
   try {
-    const data = await API.get('/admin/users');
+    const data = await API.get(`/admin/users?limit=${PAGE_SIZE}&page=${page}`);
     if (!data.users.length) {
       tbody.innerHTML = '<tr><td colspan="6" class="text-center text-secondary py-3">Nenhum usuario</td></tr>';
+      renderPagination('usersPagination', data.total, page, loadUsersFull);
       return;
     }
 
     const userSelect = document.getElementById('auditFilterUser');
-    const currentVal = userSelect.value;
-    userSelect.innerHTML = '<option value="">Todos</option>';
-    data.users.forEach((u) => {
-      userSelect.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(u.username)}">${escapeHtml(u.username)}</option>`);
-    });
-    userSelect.value = currentVal;
+    if (userSelect) {
+      const currentVal = userSelect.value;
+      userSelect.innerHTML = '<option value="">Todos</option>';
+      data.users.forEach((u) => {
+        userSelect.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(u.username)}">${escapeHtml(u.username)}</option>`);
+      });
+      userSelect.value = currentVal;
+    }
 
-    tbody.innerHTML = data.users
-      .map(
-        (u) => `
-      <tr>
-        <td>${u.id}</td>
-        <td>${escapeHtml(u.username)}</td>
-        <td><span class="badge ${u.role === 'admin' ? 'badge-outline-danger' : 'badge-outline-secondary'}">${escapeHtml(u.role)}</span></td>
-        <td>
-          ${u.is_online ? '<span class="badge badge-online">Online</span>' : '<span class="text-secondary small">Offline</span>'}
-          ${u.blocked ? ' <span class="badge badge-blocked">Bloqueado</span>' : ''}
-        </td>
-        <td class="text-nowrap">${escapeHtml(timeSince(u.last_login))}</td>
-        <td class="text-end text-nowrap">
-          <button class="btn btn-sm btn-outline-info me-1 btn-edit" data-id="${u.id}" data-username="${escapeHtml(u.username)}" data-role="${u.role}" title="Editar">&#9998;</button>
-          <button class="btn btn-sm btn-outline-secondary me-1 btn-force-logout" data-id="${u.id}" data-username="${escapeHtml(u.username)}" title="Forcar logout">&#128682;</button>
-          <button class="btn btn-sm ${u.blocked ? 'btn-outline-success' : 'btn-outline-danger'} me-1 btn-toggle-block" data-id="${u.id}" data-username="${escapeHtml(u.username)}" data-blocked="${u.blocked ? 1 : 0}" title="${u.blocked ? 'Desbloquear' : 'Bloquear'}">${u.blocked ? '&#128275;' : '&#128274;'}</button>
-          <button class="btn btn-sm btn-outline-danger btn-delete" data-id="${u.id}" data-username="${escapeHtml(u.username)}">&#128465;</button>
-        </td>
-      </tr>
-    `,
-      )
-      .join('');
+    tbody.innerHTML = data.users.map(userRowHtml).join('');
+    renderPagination('usersPagination', data.total, page, loadUsersFull);
   } catch (_e) {
     tbody.innerHTML = '<tr><td colspan="6" class="text-center text-danger py-3">Erro ao carregar</td></tr>';
   }
 }
 
-// ── Novo usuario ───────────────────────────────────────
+// ── Full audit table (expanded view) ──────────────────
+async function loadAuditFull(page) {
+  auditPage = page;
+  const tbody = document.getElementById('auditTableBody');
+  try {
+    const offset = (page - 1) * PAGE_SIZE;
+    const params = new URLSearchParams();
+    params.set('limit', PAGE_SIZE);
+    params.set('offset', offset);
+
+    const filters = getAuditFilters();
+    if (filters.user) params.set('user', filters.user);
+    if (filters.action) params.set('action', filters.action);
+    if (filters.resultado) params.set('resultado', filters.resultado);
+    if (filters.from) params.set('from', filters.from);
+    if (filters.to) params.set('to', filters.to);
+
+    const data = await API.get(`/admin/audit?${params.toString()}`);
+    if (!data.logs.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary py-3">Nenhum log</td></tr>';
+      renderPagination('auditPagination', data.total, page, loadAuditFull);
+      return;
+    }
+    tbody.innerHTML = data.logs.map(auditRowHtml).join('');
+    renderPagination('auditPagination', data.total, page, loadAuditFull);
+  } catch (_e) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">Erro ao carregar</td></tr>';
+  }
+}
+
+// ── Pagination renderer ───────────────────────────────
+function renderPagination(containerId, total, currentPage, loadFn) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+  if (totalPages <= 1) {
+    container.innerHTML = '';
+    return;
+  }
+
+  let html = '';
+  html += `<button class="btn btn-sm btn-outline-secondary" ${currentPage <= 1 ? 'disabled' : ''} data-page="${currentPage - 1}">&laquo;</button>`;
+
+  const maxVisible = 5;
+  let start = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+  let end = Math.min(totalPages, start + maxVisible - 1);
+  if (end - start < maxVisible - 1) start = Math.max(1, end - maxVisible + 1);
+
+  if (start > 1) {
+    html += `<button class="btn btn-sm btn-outline-secondary" data-page="1">1</button>`;
+    if (start > 2) html += `<span class="btn btn-sm btn-outline-secondary disabled">...</span>`;
+  }
+
+  for (let i = start; i <= end; i++) {
+    html += `<button class="btn btn-sm ${i === currentPage ? 'btn-gradient' : 'btn-outline-secondary'}" data-page="${i}">${i}</button>`;
+  }
+
+  if (end < totalPages) {
+    if (end < totalPages - 1) html += `<span class="btn btn-sm btn-outline-secondary disabled">...</span>`;
+    html += `<button class="btn btn-sm btn-outline-secondary" data-page="${totalPages}">${totalPages}</button>`;
+  }
+
+  html += `<button class="btn btn-sm btn-outline-secondary" ${currentPage >= totalPages ? 'disabled' : ''} data-page="${currentPage + 1}">&raquo;</button>`;
+
+  container.innerHTML = html;
+  container.querySelectorAll('button[data-page]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const p = parseInt(btn.dataset.page);
+      if (p && p !== currentPage) loadFn(p);
+    });
+  });
+}
+
+// ── Audit filters ─────────────────────────────────────
+function getAuditFilters() {
+  return {
+    user: document.getElementById('auditFilterUser')?.value || '',
+    action: document.getElementById('auditFilterAction')?.value || '',
+    resultado: document.getElementById('auditFilterResult')?.value || '',
+    from: document.getElementById('auditFilterFrom')?.value || '',
+    to: document.getElementById('auditFilterTo')?.value || '',
+  };
+}
+
+// ── Novo usuario ──────────────────────────────────────
 document.getElementById('btnNovoUsuario').addEventListener('click', () => {
   document.getElementById('formNovoUsuario').classList.toggle('d-none');
   document.getElementById('novoUserError').classList.add('d-none');
@@ -235,15 +487,15 @@ document.getElementById('btnSalvarNovo').addEventListener('click', async () => {
     document.getElementById('newPassword').value = '';
     errEl.classList.add('d-none');
     showToast('Usuario criado com sucesso', 'success');
-    loadUsers();
-    loadStats();
+    if (currentView === 'users') loadUsersFull(usersPage);
+    loadDashboard();
   } catch (err) {
     errEl.textContent = err.message;
     errEl.classList.remove('d-none');
   }
 });
 
-// ── Editar usuario ─────────────────────────────────────
+// ── Editar usuario ────────────────────────────────────
 document.getElementById('usersTableBody').addEventListener('click', (e) => {
   const btn = e.target.closest('.btn-edit');
   if (btn) {
@@ -286,14 +538,15 @@ document.getElementById('btnSalvarEdicao').addEventListener('click', async () =>
     await API.patch(`/admin/users/${id}`, payload);
     bootstrap.Modal.getInstance(document.getElementById('modalEditar')).hide();
     showToast('Usuario atualizado', 'success');
-    loadUsers();
+    if (currentView === 'users') loadUsersFull(usersPage);
+    loadDashboard();
   } catch (err) {
     errEl.textContent = err.message;
     errEl.classList.remove('d-none');
   }
 });
 
-// ── Forcar logout ──────────────────────────────────────
+// ── Forcar logout ─────────────────────────────────────
 document.getElementById('usersTableBody').addEventListener('click', (e) => {
   const btn = e.target.closest('.btn-force-logout');
   if (btn) {
@@ -312,8 +565,8 @@ document.getElementById('btnConfirmarForceLogout').addEventListener('click', asy
     await API.post(`/admin/users/${id}/force-logout`);
     bootstrap.Modal.getInstance(document.getElementById('modalForceLogout')).hide();
     showToast('Sessoes revogadas', 'success');
-    loadUsers();
-    loadStats();
+    if (currentView === 'users') loadUsersFull(usersPage);
+    loadDashboard();
   } catch (err) {
     errEl.textContent = err.message;
     errEl.classList.remove('d-none');
@@ -335,14 +588,14 @@ document.getElementById('usersTableBody').addEventListener('click', async (e) =>
   try {
     await API.patch(`/admin/users/${id}/block`);
     showToast(`Usuario ${action}do`, 'success');
-    loadUsers();
-    loadStats();
+    if (currentView === 'users') loadUsersFull(usersPage);
+    loadDashboard();
   } catch (err) {
     showToast(`Erro: ${err.message}`, 'error');
   }
 });
 
-// ── Excluir usuario ────────────────────────────────────
+// ── Excluir usuario ───────────────────────────────────
 document.getElementById('usersTableBody').addEventListener('click', (e) => {
   const btn = e.target.closest('.btn-delete');
   if (btn) {
@@ -361,144 +614,22 @@ document.getElementById('btnConfirmarExclusao').addEventListener('click', async 
     await API.del(`/admin/users/${id}`);
     bootstrap.Modal.getInstance(document.getElementById('modalExcluir')).hide();
     showToast('Usuario excluido', 'success');
-    loadUsers();
-    loadStats();
+    if (currentView === 'users') loadUsersFull(usersPage);
+    loadDashboard();
   } catch (err) {
     errEl.textContent = err.message;
     errEl.classList.remove('d-none');
   }
 });
 
-// ── Formatadores ──────────────────────────────────────────
-
-// ── Mapas de ação ───────────────────────────────────────
-const ACTION_BADGES = {
-  search: 'badge-outline-info',
-  login: 'badge-outline-success',
-  logout: 'badge-outline-warning',
-  admin_create_user: 'badge-outline-danger',
-  admin_update_user: 'badge-outline-primary',
-  admin_delete_user: 'badge-outline-danger',
-  admin_block_user: 'badge-outline-danger',
-  admin_unblock_user: 'badge-outline-success',
-  admin_force_logout: 'badge-outline-warning',
-  admin_reset_password: 'badge-outline-primary',
-};
-function badgeForAction(action) {
-  return ACTION_BADGES[action] || 'badge-outline-secondary';
-}
-
-function resultBadge(details) {
-  if (!details) return '<span class="text-secondary">-</span>';
-  if (details.includes('cancelado=1')) return '<span class="badge badge-outline-secondary">Cancelado</span>';
-
-  const m = details.match(/encontrados=(\d+)/);
-  if (m && parseInt(m[1], 10) > 0) return '<span class="badge badge-outline-success">Encontrado</span>';
-
-  if (details.includes('interrompida=true')) return '<span class="badge badge-outline-danger">Erro</span>';
-
-  if (m && parseInt(m[1], 10) === 0) return '<span class="badge badge-outline-warning">Nao encontrado</span>';
-
-  if (details.startsWith('erro=')) return '<span class="badge badge-outline-danger">Erro</span>';
-  return '<span class="text-secondary">-</span>';
-}
-
-const ACTION_LABELS = {
-  search: 'Busca de arquivo',
-  login: 'Login',
-  logout: 'Logout',
-  admin_create_user: 'Criar usuario',
-  admin_update_user: 'Atualizar usuario',
-  admin_delete_user: 'Excluir usuario',
-  admin_block_user: 'Bloquear usuario',
-  admin_unblock_user: 'Desbloquear usuario',
-  admin_force_logout: 'Forcar logout',
-  admin_reset_password: 'Reset senha',
-};
-function labelForAction(action) {
-  return ACTION_LABELS[action] || action;
-}
-
-// ── Auditoria ──────────────────────────────────────────
-function getAuditFilters() {
-  return {
-    user: document.getElementById('auditFilterUser').value,
-    action: document.getElementById('auditFilterAction').value,
-    from: document.getElementById('auditFilterFrom').value,
-    to: document.getElementById('auditFilterTo').value,
-  };
-}
-
-function buildAuditQuery(overrides = {}) {
-  const filters = { ...getAuditFilters(), ...overrides };
-  const params = new URLSearchParams();
-  params.set('limit', AUDIT_LIMIT);
-  params.set('offset', overrides.offset ?? auditOffset);
-  if (filters.user) params.set('user', filters.user);
-  if (filters.action) params.set('action', filters.action);
-  if (filters.from) params.set('from', filters.from);
-  if (filters.to) params.set('to', filters.to);
-  return params.toString();
-}
-
-async function loadAudit(append) {
-  const tbody = document.getElementById('auditTableBody');
-  try {
-    const query = buildAuditQuery();
-    const data = await API.get(`/admin/audit?${query}`);
-    const rows = data.logs
-      .map(
-        (l) => `
-      <tr>
-        <td class="text-nowrap">${escapeHtml(formatToSP(l.created_at))}</td>
-        <td>${escapeHtml(l.username)}</td>
-        <td><span class="badge ${badgeForAction(l.action)}">${escapeHtml(labelForAction(l.action))}</span></td>
-        <td>${resultBadge(l.details)}</td>
-        <td><button class="btn btn-sm audit-info-btn" data-log='${escapeHtml(JSON.stringify(l))}' title="Ver detalhes"><i class="info-i">i</i></button></td>
-      </tr>
-    `,
-      )
-      .join('');
-
-    if (append) {
-      tbody.innerHTML += rows;
-    } else {
-      tbody.innerHTML = rows;
-    }
-
-    if (!data.logs.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-secondary py-3">Nenhum log</td></tr>';
-    }
-
-    const btnMore = document.getElementById('btnCarregarMais');
-    btnMore.classList.toggle('d-none', data.logs.length < AUDIT_LIMIT);
-  } catch (_e) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">Erro ao carregar</td></tr>';
-  }
-}
-
-document.getElementById('btnFiltrarAudit').addEventListener('click', () => {
-  auditOffset = 0;
-  loadAudit(false);
-});
-
-document.getElementById('btnCarregarMais').addEventListener('click', async () => {
-  const btn = document.getElementById('btnCarregarMais');
-  btn.disabled = true;
-  btn.textContent = 'Carregando...';
-  auditOffset += AUDIT_LIMIT;
-  await loadAudit(true);
-  btn.disabled = false;
-  btn.textContent = 'Carregar mais';
-});
-
-// ── Export CSV ─────────────────────────────────────────
+// ── Export CSV ────────────────────────────────────────
 document.getElementById('btnExportCSV').addEventListener('click', async (e) => {
   try {
     const filters = getAuditFilters();
     const params = new URLSearchParams();
     if (filters.user) params.set('user', filters.user);
     if (filters.action) params.set('action', filters.action);
+    if (filters.resultado) params.set('resultado', filters.resultado);
     if (filters.from) params.set('from', filters.from);
     if (filters.to) params.set('to', filters.to);
 
@@ -520,7 +651,7 @@ document.getElementById('btnExportCSV').addEventListener('click', async (e) => {
   }
 });
 
-// ── Detalhes auditoria ─────────────────────────────────
+// ── Detalhes auditoria ────────────────────────────────
 document.getElementById('auditTableBody').addEventListener('click', (e) => {
   const btn = e.target.closest('.audit-info-btn');
   if (!btn) return;
@@ -608,18 +739,40 @@ document.getElementById('auditTableBody').addEventListener('click', (e) => {
   new bootstrap.Modal(document.getElementById('modalAuditDetail')).show();
 });
 
-// ── Init ───────────────────────────────────────────────
+// ── View navigation buttons ───────────────────────────
+document.getElementById('btnVerUsuarios')?.addEventListener('click', () => switchView('users'));
+document.getElementById('btnVerAuditoria')?.addEventListener('click', () => switchView('audit'));
+document.getElementById('btnVoltarUsers')?.addEventListener('click', () => switchView('dashboard'));
+document.getElementById('btnVoltarAudit')?.addEventListener('click', () => switchView('dashboard'));
+
+document.getElementById('btnFiltrarAudit')?.addEventListener('click', () => {
+  if (currentView === 'audit') loadAuditFull(1);
+});
+
+document.getElementById('auditFilterAction')?.addEventListener('change', (e) => {
+  const wrap = document.getElementById('auditFilterResultWrap');
+  const select = document.getElementById('auditFilterResult');
+  if (e.target.value === 'search') {
+    wrap.classList.remove('d-none');
+  } else {
+    wrap.classList.add('d-none');
+    select.value = '';
+  }
+});
+
+// ── Init ──────────────────────────────────────────────
 document.addEventListener('session-ready', async (event) => {
   const user = event.detail;
   if (user.role !== 'admin') {
     const msg = document.getElementById('accessMessage');
-    msg.textContent = 'Você não tem permissão para acessar esta página. Redirecionando para a tela de busca...';
+    msg.textContent = 'Voce nao tem permissao para acessar esta pagina. Redirecionando para a tela de busca...';
     setTimeout(() => { window.location.href = '/'; }, 10000);
     return;
   }
   document.getElementById('admin-page').classList.add('access-granted');
-  await Promise.all([loadStats(), loadChart(), loadUsers(), loadAudit(false)]);
+  await loadDashboard();
 
-  setInterval(() => { loadStats(); loadChart(); }, 30000);
-  setInterval(() => { loadUsers(); auditOffset = 0; loadAudit(false); }, 60000);
+  setInterval(() => {
+    if (currentView === 'dashboard') loadDashboard();
+  }, 30000);
 });

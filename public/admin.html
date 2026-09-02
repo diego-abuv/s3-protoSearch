@@ -40,57 +40,111 @@
     <span class="theme-icon-dark">&#9790;</span>
   </button>
 
-  <main class="container py-4">
+  <main class="container-fluid px-4">
 
-    <!-- Stats -->
-    <section class="mb-4">
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- VIEW: Dashboard                                -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div id="view-dashboard">
       <h2 class="fs-5 fw-bold gradient-text mb-3">Painel Admin</h2>
-      <div class="row g-3" id="statsContainer">
-        <div class="col-6 col-md-4 col-lg-2">
-          <div class="card glass-card border-0 text-center p-3">
-            <div class="text-secondary small">Usuarios</div>
-            <div class="fs-3 fw-bold gradient-text" id="statUsers">-</div>
-          </div>
-        </div>
-        <div class="col-6 col-md-4 col-lg-2">
-          <div class="card glass-card border-0 text-center p-3">
-            <div class="text-secondary small">Logs</div>
-            <div class="fs-3 fw-bold gradient-text" id="statLogs">-</div>
-          </div>
-        </div>
-        <div class="col-6 col-md-4 col-lg-2">
-          <div class="card glass-card border-0 text-center p-3">
-            <div class="text-secondary small">Buscas Hoje</div>
-            <div class="fs-3 fw-bold gradient-text" id="statSearches">-</div>
-          </div>
-        </div>
-        <div class="col-6 col-md-4 col-lg-2">
-          <div class="card glass-card border-0 text-center p-3">
-            <div class="text-secondary small">Usuarios Ativos</div>
-            <div class="fs-3 fw-bold gradient-text" id="statActiveUsers">-</div>
-          </div>
-        </div>
-      </div>
-    </section>
 
-    <!-- Grafico de Buscas -->
-    <section class="mb-4">
-      <div class="card glass-card border-0 p-3">
-        <h3 class="fs-6 fw-bold gradient-text mb-3">Buscas — Ultimos 7 dias</h3>
-        <div style="height: 220px;">
-          <canvas id="searchChart"></canvas>
+      <!-- Stats -->
+      <section class="stats-grid mb-3">
+        <div class="card glass-card border-0 text-center p-3 stat-card">
+          <div class="stat-icon">&#128101;</div>
+          <div class="fs-3 fw-bold gradient-text" id="statActiveUsers">-</div>
+          <div class="text-secondary small">Usuarios Ativos</div>
         </div>
-      </div>
-    </section>
+        <div class="card glass-card border-0 text-center p-3 stat-card">
+          <div class="stat-icon">&#128269;</div>
+          <div class="fs-3 fw-bold gradient-text" id="statSearches">-</div>
+          <div class="text-secondary small">Buscas Hoje</div>
+        </div>
+        <div class="card glass-card border-0 text-center p-3 stat-card">
+          <div class="stat-icon">&#9989;</div>
+          <div class="fs-3 fw-bold gradient-text" id="statSuccessRate">-</div>
+          <div class="text-secondary small">Taxa Sucesso (7d)</div>
+        </div>
+        <div class="card glass-card border-0 text-center p-3 stat-card">
+          <div class="stat-icon">&#9201;</div>
+          <div class="fs-3 fw-bold gradient-text" id="statAvgDuration">-</div>
+          <div class="text-secondary small">Tempo Medio</div>
+        </div>
+      </section>
 
-    <!-- Usuarios -->
-    <section class="mb-4">
+      <!-- Grid: Chart + Previews -->
+      <section class="dashboard-grid">
+        <!-- Grafico -->
+        <div class="card glass-card border-0 p-3 chart-card">
+          <h3 class="fs-6 fw-bold gradient-text mb-3">Buscas — Ultimos 7 dias</h3>
+          <div style="height: 220px;">
+            <canvas id="searchChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Previews -->
+        <div class="previews-column">
+          <!-- Preview Usuarios -->
+          <div class="card glass-card border-0 preview-card">
+            <div class="preview-header">
+              <h3 class="fs-6 fw-bold gradient-text mb-0">Usuarios</h3>
+              <button class="btn btn-sm btn-gradient" id="btnVerUsuarios">Ver todos &#8594;</button>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-dark glass-table mb-0">
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th class="text-end">Acoes</th>
+                  </tr>
+                </thead>
+                <tbody id="usersPreviewBody">
+                  <tr><td colspan="4" class="text-center text-secondary py-3">Carregando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Preview Auditoria -->
+          <div class="card glass-card border-0 preview-card">
+            <div class="preview-header">
+              <h3 class="fs-6 fw-bold gradient-text mb-0">Auditoria</h3>
+              <button class="btn btn-sm btn-gradient" id="btnVerAuditoria">Ver todos &#8594;</button>
+            </div>
+            <div class="table-responsive">
+              <table class="table table-dark glass-table mb-0">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Usuario</th>
+                    <th>Acao</th>
+                    <th>Resultado</th>
+                  </tr>
+                </thead>
+                <tbody id="auditPreviewBody">
+                  <tr><td colspan="4" class="text-center text-secondary py-3">Carregando...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- VIEW: Usuarios expandido                       -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div id="view-users" class="d-none">
       <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2 class="fs-5 fw-bold gradient-text mb-0">Usuarios</h2>
+        <div class="d-flex align-items-center">
+          <button class="btn btn-sm btn-gradient me-3" id="btnVoltarUsers">&#8592; Voltar</button>
+          <h2 class="fs-5 fw-bold gradient-text mb-0">Usuarios</h2>
+        </div>
         <button class="btn btn-sm btn-gradient" id="btnNovoUsuario">+ Novo</button>
       </div>
 
-      <!-- Form novo usuario (escondido) -->
       <div class="card glass-card border-0 mb-3 d-none" id="formNovoUsuario">
         <div class="card-body p-3">
           <div class="row g-2 align-items-end">
@@ -120,7 +174,7 @@
         </div>
       </div>
 
-      <!-- Tabela -->
+      <!-- Tabela completa -->
       <div class="card glass-card border-0">
         <div class="card-body p-0">
           <div class="table-responsive">
@@ -141,12 +195,22 @@
             </table>
           </div>
         </div>
+        <div class="card-footer border-0">
+          <div class="pagination" id="usersPagination"></div>
+        </div>
       </div>
-    </section>
+    </div>
 
-    <!-- Auditoria -->
-    <section class="mb-4">
-      <h2 class="fs-5 fw-bold gradient-text mb-3">Auditoria</h2>
+    <!-- ═══════════════════════════════════════════════ -->
+    <!-- VIEW: Auditoria expandida                      -->
+    <!-- ═══════════════════════════════════════════════ -->
+    <div id="view-audit" class="d-none">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="d-flex align-items-center">
+          <button class="btn btn-sm btn-gradient me-3" id="btnVoltarAudit">&#8592; Voltar</button>
+          <h2 class="fs-5 fw-bold gradient-text mb-0">Auditoria</h2>
+        </div>
+      </div>
 
       <!-- Filtros -->
       <div class="card glass-card border-0 mb-3">
@@ -182,6 +246,16 @@
                 <option value="admin_reset_password">Reset senha</option>
               </select>
             </div>
+            <div class="col-6 col-md-2 d-none" id="auditFilterResultWrap">
+              <label class="form-label small">Resultado</label>
+              <select class="form-select form-select-sm glass-input" id="auditFilterResult">
+                <option value="">Todos</option>
+                <option value="encontrado">Encontrado</option>
+                <option value="nao_encontrado">Nao encontrado</option>
+                <option value="cancelado">Cancelado</option>
+                <option value="erro">Erro</option>
+              </select>
+            </div>
             <div class="col-6 col-md-2">
               <button class="btn btn-sm btn-gradient w-100" id="btnFiltrarAudit">Buscar</button>
             </div>
@@ -192,6 +266,7 @@
         </div>
       </div>
 
+      <!-- Tabela completa -->
       <div class="card glass-card border-0">
         <div class="card-body p-0">
           <div class="table-responsive">
@@ -211,16 +286,16 @@
             </table>
           </div>
         </div>
-        <div class="card-footer border-0 text-center">
-          <button class="btn btn-sm btn-outline-secondary d-none" id="btnCarregarMais">Carregar mais</button>
+        <div class="card-footer border-0">
+          <div class="pagination" id="auditPagination"></div>
         </div>
       </div>
-    </section>
+    </div>
 
   </main>
 
   <!-- Toast container -->
-  <div class="toast-container position-fixed top-0 end-0 p-3" id="toastContainer" style="z-index:9999;"></div>
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer" style="z-index:9999;"></div>
 
   <!-- Modal editar usuario -->
   <div class="modal fade" id="modalEditar" tabindex="-1">

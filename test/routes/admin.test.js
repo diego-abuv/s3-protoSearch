@@ -69,6 +69,7 @@ describe('Admin Routes', () => {
     });
 
     it('retorna 200 com lista de usuarios para admin', async () => {
+      sqlite.get.mockReturnValue({ total: 2 });
       sqlite.all.mockReturnValue([
         { id: 1, username: 'admin', role: 'admin' },
         { id: 2, username: 'user1', role: 'user' },
@@ -237,14 +238,33 @@ describe('Admin Routes', () => {
       sqlite.get
         .mockReturnValueOnce({ total: 5 })
         .mockReturnValueOnce({ total: 42 })
+        .mockReturnValueOnce({ total: 2 })
         .mockReturnValueOnce({ total: 10 })
-        .mockReturnValueOnce({ total: 2 });
+        .mockReturnValueOnce({ total: 0 })
+        .mockReturnValueOnce({ total: 0 })
+        .mockReturnValueOnce({ total: 0 })
+        .mockReturnValueOnce({ avg_s: 1.5 });
       const res = await request(app).get('/admin/stats').set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(res.status).toBe(200);
       expect(res.body.users).toBe(5);
       expect(res.body.audit_logs).toBe(42);
       expect(res.body.searches_today).toBe(10);
       expect(res.body.active_users).toBe(2);
+    });
+
+    it('retorna avg_duration_s com valor correto', async () => {
+      sqlite.get
+        .mockReturnValueOnce({ total: 1 })
+        .mockReturnValueOnce({ total: 1 })
+        .mockReturnValueOnce({ total: 1 })
+        .mockReturnValueOnce({ total: 1 })
+        .mockReturnValueOnce({ total: 0 })
+        .mockReturnValueOnce({ total: 1 })
+        .mockReturnValueOnce({ total: 1 })
+        .mockReturnValueOnce({ avg_s: 3.25 });
+      const res = await request(app).get('/admin/stats').set('Authorization', `Bearer ${makeAdminToken()}`);
+      expect(res.status).toBe(200);
+      expect(res.body.avg_duration_s).toBe(3.3);
     });
   });
 
@@ -415,6 +435,7 @@ describe('Admin Routes', () => {
 
   describe('GET /admin/users - status online', () => {
     it('retorna campo is_online para cada usuario', async () => {
+      sqlite.get.mockReturnValue({ total: 2 });
       sqlite.all.mockReturnValue([
         { id: 1, username: 'admin', role: 'admin', blocked: 0, last_login: '2026-01-01', is_online: 1 },
         { id: 2, username: 'user1', role: 'user', blocked: 0, last_login: null, is_online: 0 },
@@ -426,6 +447,7 @@ describe('Admin Routes', () => {
     });
 
     it('retorna campo blocked para cada usuario', async () => {
+      sqlite.get.mockReturnValue({ total: 2 });
       sqlite.all.mockReturnValue([
         { id: 1, username: 'admin', role: 'admin', blocked: 0, last_login: null, is_online: 0 },
         { id: 2, username: 'blocked_user', role: 'user', blocked: 1, last_login: null, is_online: 0 },
@@ -436,6 +458,7 @@ describe('Admin Routes', () => {
     });
 
     it('retorna campo last_login para cada usuario', async () => {
+      sqlite.get.mockReturnValue({ total: 1 });
       sqlite.all.mockReturnValue([
         { id: 1, username: 'admin', role: 'admin', blocked: 0, last_login: '2026-07-15 10:00:00', is_online: 1 },
       ]);
@@ -475,11 +498,11 @@ describe('Admin Routes', () => {
         .set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(res.status).toBe(200);
       expect(sqlite.all).toHaveBeenCalledWith(
-        expect.stringContaining('created_at >= ?'),
+        expect.stringContaining('date(created_at) >= ?'),
         expect.arrayContaining(['2026-01-01']),
       );
       expect(sqlite.all).toHaveBeenCalledWith(
-        expect.stringContaining("created_at < datetime(?, '+1 day')"),
+        expect.stringContaining('date(created_at) <= ?'),
         expect.arrayContaining(['2026-12-31']),
       );
     });
@@ -540,6 +563,27 @@ describe('Admin Routes', () => {
       );
     });
 
+    it('aplica filtro from no export com date()', async () => {
+      sqlite.all.mockReturnValue([]);
+      await request(app)
+        .get('/admin/audit/export?from=2026-06-01')
+        .set('Authorization', `Bearer ${makeAdminToken()}`);
+      expect(sqlite.all).toHaveBeenCalledWith(
+        expect.stringContaining('date(created_at) >= ?'),
+        expect.arrayContaining(['2026-06-01']),
+      );
+    });
+
+    it('aplica filtro from e to no export com date()', async () => {
+      sqlite.all.mockReturnValue([]);
+      await request(app)
+        .get('/admin/audit/export?from=2026-06-01&to=2026-06-30')
+        .set('Authorization', `Bearer ${makeAdminToken()}`);
+      const sql = sqlite.all.mock.calls[sqlite.all.mock.calls.length - 1][0];
+      expect(sql).toContain('date(created_at) >= ?');
+      expect(sql).toContain('date(created_at) <= ?');
+    });
+
     it('limita a 10000 registros sem filtro', async () => {
       sqlite.all.mockReturnValue([]);
       await request(app).get('/admin/audit/export').set('Authorization', `Bearer ${makeAdminToken()}`);
@@ -552,7 +596,7 @@ describe('Admin Routes', () => {
         .get('/admin/audit/export?to=2026-12-31')
         .set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(sqlite.all).toHaveBeenCalledWith(
-        expect.stringContaining('created_at <= ?'),
+        expect.stringContaining('date(created_at) <= ?'),
         expect.arrayContaining(['2026-12-31']),
       );
     });

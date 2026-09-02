@@ -18,13 +18,22 @@ export function createAdminRoutes() {
   router.use(adminLimiter);
 
   router.get('/admin/users', authMiddleware, adminMiddleware, (req, res) => {
-    const users = all(`
-      SELECT u.id, u.username, u.role, u.blocked,
+    const page = Math.max(parseInt(req.query.page) || 1, 1);
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const offset = (page - 1) * limit;
+
+    const total = get('SELECT COUNT(*) as total FROM users');
+    const users = all(
+      `SELECT u.id, u.username, u.role, u.blocked,
         (SELECT MAX(created_at) FROM audit_log WHERE user_id = u.id AND action = 'login') as last_login,
         (SELECT COUNT(*) FROM refresh_tokens WHERE user_id = u.id AND revoked = 0 AND expires_at > datetime('now')) > 0 as is_online
       FROM users u
-    `);
-    res.json({ message: 'Lista de usuários', users });
+      ORDER BY u.id ASC
+      LIMIT ? OFFSET ?`,
+      [limit, offset],
+    );
+
+    res.json({ message: 'Lista de usuários', users, total: total.total, page, limit });
   });
 
   router.post('/admin/users', authMiddleware, adminMiddleware, (req, res) => {
@@ -214,12 +223,25 @@ export function createAdminRoutes() {
       params.push(req.query.action);
     }
     if (req.query.from) {
-      whereClause += ' AND created_at >= ?';
+      whereClause += ' AND date(created_at) >= ?';
       params.push(req.query.from);
     }
     if (req.query.to) {
-      whereClause += " AND created_at < datetime(?, '+1 day')";
+      whereClause += ' AND date(created_at) <= ?';
       params.push(req.query.to);
+    }
+
+    if (req.query.resultado && req.query.action === 'search') {
+      const resultExpr = `(CASE
+        WHEN details LIKE '%cancelado=1%' THEN 'cancelado'
+        WHEN details LIKE 'encontrados=%' AND CAST(SUBSTR(details, 13, INSTR(SUBSTR(details, 13), ',') - 1) AS INTEGER) > 0 THEN 'encontrado'
+        WHEN details LIKE '%interrompida=true%' THEN 'erro'
+        WHEN details LIKE 'encontrados=%' THEN 'nao_encontrado'
+        WHEN details LIKE 'erro=%' THEN 'erro'
+        ELSE 'outro'
+      END)`;
+      whereClause += ` AND ${resultExpr} = ?`;
+      params.push(req.query.resultado);
     }
 
     const logs = all(`SELECT * FROM audit_log WHERE 1=1 ${whereClause} ORDER BY created_at DESC LIMIT ? OFFSET ?`, [
@@ -244,12 +266,25 @@ export function createAdminRoutes() {
       params.push(req.query.action);
     }
     if (req.query.from) {
-      whereClause += ' AND created_at >= ?';
+      whereClause += ' AND date(created_at) >= ?';
       params.push(req.query.from);
     }
     if (req.query.to) {
-      whereClause += ' AND created_at <= ?';
+      whereClause += ' AND date(created_at) <= ?';
       params.push(req.query.to);
+    }
+
+    if (req.query.resultado && req.query.action === 'search') {
+      const resultExpr = `(CASE
+        WHEN details LIKE '%cancelado=1%' THEN 'cancelado'
+        WHEN details LIKE 'encontrados=%' AND CAST(SUBSTR(details, 13, INSTR(SUBSTR(details, 13), ',') - 1) AS INTEGER) > 0 THEN 'encontrado'
+        WHEN details LIKE '%interrompida=true%' THEN 'erro'
+        WHEN details LIKE 'encontrados=%' THEN 'nao_encontrado'
+        WHEN details LIKE 'erro=%' THEN 'erro'
+        ELSE 'outro'
+      END)`;
+      whereClause += ` AND ${resultExpr} = ?`;
+      params.push(req.query.resultado);
     }
 
     const logs = all(`SELECT * FROM audit_log WHERE 1=1 ${whereClause} ORDER BY created_at DESC LIMIT 10000`, params);
@@ -269,24 +304,61 @@ export function createAdminRoutes() {
   router.get('/admin/stats', authMiddleware, adminMiddleware, (req, res) => {
     const userCount = get('SELECT COUNT(*) as total FROM users');
     const logCount = get('SELECT COUNT(*) as total FROM audit_log');
-    const searchesToday = get(
-      "SELECT COUNT(*) as total FROM audit_log WHERE action = 'search' AND date(created_at) = date('now')",
-    );
     const activeUsers = get(
       'SELECT COUNT(DISTINCT user_id) as total FROM refresh_tokens WHERE revoked = 0 AND expires_at > datetime("now")',
     );
+
+    const searchesToday = get(
+      "SELECT COUNT(*) as total FROM audit_log WHERE action = 'search' AND date(created_at) = date('now')",
+    );
+    const errorsToday = get(
+      `SELECT COUNT(*) as total FROM audit_log
+       WHERE action = 'search' AND date(created_at) = date('now')
+       AND (details LIKE 'erro=%' OR details LIKE '%interrompida=true%')`,
+    );
+
+    const totalSearches7d = get(
+      "SELECT COUNT(*) as total FROM audit_log WHERE action = 'search' AND created_at > datetime('now', '-7 days')",
+    );
+    const okSearches7d = get(
+      `SELECT COUNT(*) as total FROM audit_log
+       WHERE action = 'search' AND created_at > datetime('now', '-7 days')
+       AND details NOT LIKE 'erro=%' AND details NOT LIKE '%interrompida=true%'`,
+    );
+
+    const avgDuration = get(
+      `SELECT AVG(
+         CAST(SUBSTR(details, INSTR(details, 'tempo=') + 6,
+           INSTR(SUBSTR(details, INSTR(details, 'tempo=')), ',') - 6
+         ) AS REAL)
+       ) as avg_s
+       FROM audit_log
+       WHERE action = 'search' AND details LIKE '%tempo=%'
+       AND created_at > datetime('now', '-7 days')`,
+    );
+
+    const successRate = totalSearches7d.total > 0 ? Math.round((okSearches7d.total / totalSearches7d.total) * 100) : 0;
 
     res.json({
       users: userCount.total,
       audit_logs: logCount.total,
       searches_today: searchesToday.total,
       active_users: activeUsers.total,
+      success_rate: successRate,
+      avg_duration_s: avgDuration.avg_s ? Math.round(avgDuration.avg_s * 10) / 10 : 0,
+      errors_today: errorsToday.total,
     });
   });
 
   router.get('/admin/stats/chart', authMiddleware, adminMiddleware, (req, res) => {
     const data = all(
-      "SELECT date(created_at) as day, COUNT(*) as total FROM audit_log WHERE action = 'search' AND created_at > datetime('now', '-7 days') GROUP BY day ORDER BY day",
+      `SELECT date(created_at) as day,
+              COUNT(*) as total,
+              SUM(CASE WHEN details NOT LIKE 'erro=%' AND details NOT LIKE '%interrompida=true%' THEN 1 ELSE 0 END) as ok,
+              SUM(CASE WHEN details LIKE 'erro=%' OR details LIKE '%interrompida=true%' THEN 1 ELSE 0 END) as errors
+       FROM audit_log
+       WHERE action = 'search' AND created_at > datetime('now', '-7 days')
+       GROUP BY day ORDER BY day`,
     );
     res.json({ data });
   });
