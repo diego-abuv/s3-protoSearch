@@ -478,7 +478,7 @@ describe('Search Routes', () => {
       }
     });
 
-    it('audit registra interrompida=true sem cancelado=1 quando o cliente desconecta (perda de conexao)', async () => {
+    it('audit registra cancelado=1 quando o cliente desconecta (perda de conexao)', async () => {
       const server = http.createServer(app);
       await new Promise((r) => server.listen(0, r));
       try {
@@ -534,16 +534,11 @@ describe('Search Routes', () => {
             expect(sqlite.logAudit).toHaveBeenCalledWith(
               expect.objectContaining({
                 action: 'search',
-                details: expect.stringContaining('interrompida=true'),
+                details: expect.stringContaining('cancelado=1'),
               }),
             );
           },
           { timeout: 2000 },
-        );
-        expect(sqlite.logAudit).toHaveBeenCalledWith(
-          expect.objectContaining({
-            details: expect.not.stringContaining('cancelado=1'),
-          }),
         );
       } finally {
         server.close();

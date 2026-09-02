@@ -98,7 +98,10 @@ export function createSearchRoutes(searchableService) {
       const cleanup = () => {
         clearInterval(heartbeatInterval);
         if (searchToken) searchTokens.delete(searchToken);
-        if (!res.writableEnded) externalAbort.abort();
+        if (!res.writableEnded) {
+          cancelledByUser = true;
+          externalAbort.abort();
+        }
       };
       res.on('close', cleanup);
       res.on('error', cleanup);
