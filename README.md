@@ -155,11 +155,11 @@ graph TD
 
 | Modo | Comando | Acesso |
 |------|---------|--------|
-| **HTTP** (dev/local) | `docker compose -f docker-compose.yml -f docker-compose.http.yml up -d` | `http://host:3000` |
+| **HTTP** (dev/local) | `docker compose -f docker-compose.yml -f docker-compose.http.yml up -d` | `http://host:80` |
 | **HTTPS** (produção) | `docker compose -f docker-compose.yml -f docker-compose.https.yml up -d` | `https://dominio` |
 
 ```bash
-# HTTP — app exposta na porta 3000
+# HTTP — app exposta na porta 80
 docker compose -f docker-compose.yml -f docker-compose.http.yml up -d --build
 
 # HTTPS — Caddy na 80/443, app apenas na rede interna
@@ -169,7 +169,7 @@ docker compose -f docker-compose.yml -f docker-compose.https.yml up -d --build
 > ⚠️ **Antes do primeiro deploy HTTPS**: edite o `Caddyfile` e substitua `seu-dominio-aqui.com.br` pelo domínio real. O Caddy só aceita conexões TLS para domínios explicitamente listados.
 
 > Em modo HTTPS, apenas as portas 80 e 443 do Caddy ficam expostas.
-> A porta 3000 da aplicação fica acessível apenas na rede interna do Docker (exposed, não publicada).
+> A porta 80 da aplicação fica acessível apenas na rede interna do Docker (exposed, não publicada).
 > O Express detecta automaticamente se a requisição chegou por HTTP ou HTTPS via `req.protocol` (Caddy envia `X-Forwarded-Proto`). Cookie `secure` e HSTS são ativados somente quando HTTPS for detectado.
 
 ---
@@ -192,10 +192,10 @@ AWS_BUCKET_NAME=nome-do-bucket
 AWS_REGION=sa-east-1
 
 # Busca Local 
-PATH_X5=/sharepoint/pastaPrincipal
+PATH_X5=/sharepoint/backupligacoes
 YEARS_X5=2021,2022,2023,2024
 
-PATH_Z2=/sharepoint/pastaSecundaria,subPasta1;subPasta2
+PATH_Z2=/sharepoint/share,subfolder1;subfolder2
 YEARS_Z2=2019,2020,2021
 
 # Segurança
@@ -281,6 +281,7 @@ s3-protoSearch/
 │   │       ├── auth.paths.js
 │   │       ├── search.paths.js
 │   │       ├── download.paths.js
+│   │       ├── index.js
 │   │       └── admin.paths.js
 │   └── utils/
 │       ├── errorCodes.js             # Tradução de erros
@@ -303,16 +304,16 @@ s3-protoSearch/
 │   │   └── auth.test.js          # 14 testes
 │   ├── routes/
 │   │   ├── auth.test.js          # 26 testes
-│   │   ├── admin.test.js         # 62 testes
-│   │   ├── search.test.js        # 8 testes
+│   │   ├── admin.test.js         # 66 testes
+│   │   ├── search.test.js        # 26 testes
 │   │   └── download.test.js      # 8 testes
 │   ├── services/
 │   │   ├── s3SearchService.test.js       # 10 testes
-│   │   ├── localSearchService.test.js    # 4 testes
-│   │   └── unifiedSearchService.test.js  # 9 testes
+│   │   ├── localSearchService.test.js    # 9 testes
+│   │   └── unifiedSearchService.test.js  # 14 testes
 │   └── utils/
 │       ├── validation.test.js    # 26 testes
-│       ├── errorCodes.test.js    # 15 testes
+│       ├── errorCodes.test.js    # 18 testes
 │       ├── retry.test.js         # 18 testes
 │       ├── securityHeaders.test.js  # 7 testes
 │       └── cache.test.js        # 12 testes
@@ -524,7 +525,7 @@ npm run dev                     # Node --watch com auto-restart
 
 ## Testes
 
-**260 testes — 14 arquivos — Vitest + Supertest**
+**267 testes — 14 arquivos — Vitest + Supertest**
 
 | Comando | Descrição |
 |---------|-----------|
@@ -538,12 +539,12 @@ npm run dev                     # Node --watch com auto-restart
 
 | Fase | Arquivos | Testes |
 |------|----------|--------|
-| Foundation (validação, erros) | 2 | 41 |
+| Foundation (validação, erros) | 2 | 44 |
 | Database (sqlite) | 1 | 13 |
 | Middleware + Utilitários | 3 | 39 |
 | Cache Redis | 1 | 12 |
-| Services (S3, Local, Unificado) | 3 | 23 |
-| Routes (auth, admin, search, download) | 4 | 104 |
+| Services (S3, Local, Unificado) | 3 | 33 |
+| Routes (auth, admin, search, download) | 4 | 126 |
 
 ---
 
