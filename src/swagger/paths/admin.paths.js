@@ -154,6 +154,26 @@ export const adminPaths = {
       summary: 'Listar usuários',
       description: 'Retorna todos os usuários com status de login e block.',
       security: adminSec,
+      parameters: [
+        {
+          in: 'query',
+          name: 'page',
+          schema: { type: 'integer', default: 1, minimum: 1 },
+          description: 'Número da página',
+        },
+        {
+          in: 'query',
+          name: 'limit',
+          schema: { type: 'integer', default: 20, maximum: 100 },
+          description: 'Quantidade de usuários por página',
+        },
+        {
+          in: 'query',
+          name: 'all',
+          schema: { type: 'string', enum: ['1', 'true'] },
+          description: 'Retorna todos os usuários sem paginação (usado em filtros)',
+        },
+      ],
       responses: { ...listUsersResp, 429: tooManyReqs },
     },
     post: {

@@ -44,6 +44,7 @@ let usersPage = 1;
 let auditPage = 1;
 const PAGE_SIZE = 20;
 let searchChartInstance = null;
+let auditUserCache = null;
 
 // ── Toast ──────────────────────────────────────────────
 function showToast(message, type = 'info', duration = 3000) {
@@ -155,6 +156,7 @@ function switchView(view) {
   } else if (view === 'users') {
     loadUsersFull(1);
   } else if (view === 'audit') {
+    populateAuditUserFilter();
     loadAuditFull(1);
   }
 }
@@ -301,16 +303,6 @@ async function loadUsersPreview() {
       return;
     }
     tbody.innerHTML = data.users.map(userRowCompactHtml).join('');
-
-    const userSelect = document.getElementById('auditFilterUser');
-    if (userSelect) {
-      const currentVal = userSelect.value;
-      userSelect.innerHTML = '<option value="">Todos</option>';
-      data.users.forEach((u) => {
-        userSelect.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(u.username)}">${escapeHtml(u.username)}</option>`);
-      });
-      userSelect.value = currentVal;
-    }
   } catch (_e) {
     tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-2">Erro ao carregar</td></tr>';
   }
@@ -344,16 +336,6 @@ async function loadUsersFull(page) {
       tbody.innerHTML = '<tr><td colspan="6" class="text-center text-secondary py-3">Nenhum usuario</td></tr>';
       renderPagination('usersPagination', data.total, page, loadUsersFull);
       return;
-    }
-
-    const userSelect = document.getElementById('auditFilterUser');
-    if (userSelect) {
-      const currentVal = userSelect.value;
-      userSelect.innerHTML = '<option value="">Todos</option>';
-      data.users.forEach((u) => {
-        userSelect.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(u.username)}">${escapeHtml(u.username)}</option>`);
-      });
-      userSelect.value = currentVal;
     }
 
     tbody.innerHTML = data.users.map(userRowHtml).join('');
@@ -447,6 +429,82 @@ function getAuditFilters() {
   };
 }
 
+async function populateAuditUserFilter(force = false) {
+  const input = document.getElementById('auditFilterUser');
+  const menu = document.getElementById('auditUserList');
+  if (!input || !menu) return;
+  if (!force && auditUserCache !== null) {
+    renderAuditUserMenu(menu, auditUserCache, input.value);
+    return;
+  }
+  const currentVal = input.value;
+  try {
+    const data = await API.get('/admin/users?all=1');
+    auditUserCache = data.users.map((u) => u.username);
+    renderAuditUserMenu(menu, auditUserCache, currentVal);
+  } catch (_e) {
+    menu.innerHTML = '';
+  }
+  input.value = currentVal;
+}
+
+function renderAuditUserMenu(menu, usernames, query = '') {
+  const list = AuditUserFilter.matches(usernames, query);
+  menu.innerHTML = list.length
+    ? AuditUserFilter.items(list)
+    : '<div class="audit-user-combo-empty">Nenhum usuario</div>';
+}
+
+function initAuditUserCombobox() {
+  const root = document.querySelector('.audit-user-combo');
+  const input = document.getElementById('auditFilterUser');
+  const menu = document.getElementById('auditUserList');
+  if (!root || !input || !menu) return;
+
+  const open = () => {
+    renderAuditUserMenu(menu, auditUserCache || [], input.value);
+    menu.classList.add('open');
+    input.setAttribute('aria-expanded', 'true');
+  };
+  const close = () => {
+    menu.classList.remove('open');
+    input.setAttribute('aria-expanded', 'false');
+  };
+  const toggle = () => (menu.classList.contains('open') ? close() : open());
+  const select = (value) => { input.value = value; close(); };
+
+  input.addEventListener('focus', open);
+  input.addEventListener('input', () => {
+    renderAuditUserMenu(menu, auditUserCache || [], input.value);
+    open();
+  });
+  input.addEventListener('keydown', (e) => {
+    const items = [...menu.querySelectorAll('.audit-user-combo-item')];
+    const idx = items.findIndex((el) => el.classList.contains('active'));
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!items.length) return;
+      const step = e.key === 'ArrowDown' ? 1 : -1;
+      const next = (idx + step + items.length) % items.length;
+      items.forEach((el) => el.classList.toggle('active', el === items[next]));
+      items[next].scrollIntoView({ block: 'nearest' });
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (idx !== -1 && items[idx]) select(items[idx].dataset.value);
+      else close();
+    } else if (e.key === 'Escape') {
+      close();
+    }
+  });
+  menu.addEventListener('click', (e) => {
+    const item = e.target.closest('.audit-user-combo-item');
+    if (item) select(item.dataset.value);
+  });
+  document.addEventListener('click', (e) => {
+    if (!root.contains(e.target)) close();
+  });
+}
+
 // ── Novo usuario ──────────────────────────────────────
 document.getElementById('btnNovoUsuario').addEventListener('click', () => {
   document.getElementById('formNovoUsuario').classList.toggle('d-none');
@@ -489,6 +547,7 @@ document.getElementById('btnSalvarNovo').addEventListener('click', async () => {
     showToast('Usuario criado com sucesso', 'success');
     if (currentView === 'users') loadUsersFull(usersPage);
     loadDashboard();
+    populateAuditUserFilter(true);
   } catch (err) {
     errEl.textContent = err.message;
     errEl.classList.remove('d-none');
@@ -540,6 +599,7 @@ document.getElementById('btnSalvarEdicao').addEventListener('click', async () =>
     showToast('Usuario atualizado', 'success');
     if (currentView === 'users') loadUsersFull(usersPage);
     loadDashboard();
+    populateAuditUserFilter(true);
   } catch (err) {
     errEl.textContent = err.message;
     errEl.classList.remove('d-none');
@@ -616,6 +676,7 @@ document.getElementById('btnConfirmarExclusao').addEventListener('click', async 
     showToast('Usuario excluido', 'success');
     if (currentView === 'users') loadUsersFull(usersPage);
     loadDashboard();
+    populateAuditUserFilter(true);
   } catch (err) {
     errEl.textContent = err.message;
     errEl.classList.remove('d-none');
@@ -760,6 +821,8 @@ document.getElementById('auditFilterAction')?.addEventListener('change', (e) => 
   }
 });
 
+initAuditUserCombobox();
+
 // ── Init ──────────────────────────────────────────────
 document.addEventListener('session-ready', async (event) => {
   const user = event.detail;
@@ -771,6 +834,7 @@ document.addEventListener('session-ready', async (event) => {
   }
   document.getElementById('admin-page').classList.add('access-granted');
   await loadDashboard();
+  await populateAuditUserFilter();
 
   setInterval(() => {
     if (currentView === 'dashboard') loadDashboard();

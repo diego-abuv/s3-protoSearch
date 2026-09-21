@@ -226,9 +226,13 @@
             </div>
             <div class="col-6 col-md-2">
               <label class="form-label small">Usuario</label>
-              <select class="form-select form-select-sm glass-input" id="auditFilterUser">
-                <option value="">Todos</option>
-              </select>
+              <div class="audit-user-combo">
+                <input type="text" class="form-control form-control-sm glass-input" id="auditFilterUser"
+                       placeholder="Todos" autocomplete="off" role="combobox"
+                       aria-expanded="false" aria-controls="auditUserList" aria-autocomplete="list">
+                <span class="audit-user-combo-toggle" id="auditUserToggle" aria-hidden="true">&#9662;</span>
+                <div class="audit-user-combo-menu" id="auditUserList" role="listbox"></div>
+              </div>
             </div>
             <div class="col-6 col-md-2">
               <label class="form-label small">Acao</label>
@@ -419,6 +423,7 @@
   <script src="/js/auth.js"></script>
   <script src="/js/utils.js"></script>
   <script src="/js/theme.js"></script>
+  <script src="/js/userFilter.js"></script>
   <script src="/js/app.js"></script>
   <script src="/js/admin.js"></script>
 </body>

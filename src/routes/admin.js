@@ -18,16 +18,23 @@ export function createAdminRoutes() {
   router.use(adminLimiter);
 
   router.get('/admin/users', authMiddleware, adminMiddleware, (req, res) => {
+    const userSelect = `SELECT u.id, u.username, u.role, u.blocked,
+        (SELECT MAX(created_at) FROM audit_log WHERE user_id = u.id AND action = 'login') as last_login,
+        (SELECT COUNT(*) FROM refresh_tokens WHERE user_id = u.id AND revoked = 0 AND expires_at > datetime('now')) > 0 as is_online
+      FROM users u`;
+
+    if (req.query.all && ['1', 'true'].includes(req.query.all)) {
+      const users = all(`${userSelect} ORDER BY u.username COLLATE NOCASE ASC`);
+      return res.json({ message: 'Lista de usuários', users, total: users.length, page: 1, limit: users.length });
+    }
+
     const page = Math.max(parseInt(req.query.page) || 1, 1);
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
     const offset = (page - 1) * limit;
 
     const total = get('SELECT COUNT(*) as total FROM users');
     const users = all(
-      `SELECT u.id, u.username, u.role, u.blocked,
-        (SELECT MAX(created_at) FROM audit_log WHERE user_id = u.id AND action = 'login') as last_login,
-        (SELECT COUNT(*) FROM refresh_tokens WHERE user_id = u.id AND revoked = 0 AND expires_at > datetime('now')) > 0 as is_online
-      FROM users u
+      `${userSelect}
       ORDER BY u.id ASC
       LIMIT ? OFFSET ?`,
       [limit, offset],

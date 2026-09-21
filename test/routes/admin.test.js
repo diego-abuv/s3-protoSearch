@@ -79,6 +79,41 @@ describe('Admin Routes', () => {
       expect(res.body.users).toHaveLength(2);
       expect(res.body.message).toBe('Lista de usuários');
     });
+
+    it('retorna todos os usuarios sem paginacao quando all=1', async () => {
+      sqlite.all.mockReturnValue([
+        { id: 1, username: 'admin', role: 'admin' },
+        { id: 2, username: 'bob', role: 'user' },
+        { id: 3, username: 'carla', role: 'user' },
+      ]);
+      const res = await request(app).get('/admin/users?all=1').set('Authorization', `Bearer ${makeAdminToken()}`);
+      expect(res.status).toBe(200);
+      expect(res.body.users).toHaveLength(3);
+      expect(res.body.total).toBe(3);
+      expect(res.body.limit).toBe(3);
+      const [sql] = sqlite.all.mock.calls[0];
+      expect(sql).not.toContain('LIMIT ? OFFSET ?');
+    });
+
+    it('ignora cap de limit e page quando all=1', async () => {
+      const users = Array.from({ length: 150 }, (_, i) => ({ id: i + 1, username: `user${i}`, role: 'user' }));
+      sqlite.all.mockReturnValue(users);
+      const res = await request(app)
+        .get('/admin/users?all=1&limit=5&page=2')
+        .set('Authorization', `Bearer ${makeAdminToken()}`);
+      expect(res.status).toBe(200);
+      expect(res.body.users).toHaveLength(150);
+      expect(res.body.total).toBe(150);
+      expect(res.body.page).toBe(1);
+    });
+
+    it('ordena alfabeticamente quando all=1', async () => {
+      sqlite.all.mockReturnValue([{ id: 1, username: 'bob', role: 'user' }]);
+      await request(app).get('/admin/users?all=1').set('Authorization', `Bearer ${makeAdminToken()}`);
+      const [sql] = sqlite.all.mock.calls[0];
+      expect(sql).toContain('ORDER BY u.username COLLATE NOCASE ASC');
+      expect(sql).not.toContain('ORDER BY u.id ASC');
+    });
   });
 
   describe('POST /admin/users', () => {
