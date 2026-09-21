@@ -53,6 +53,7 @@ describe('Search Routes', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     sqlite = await import('../../src/db/sqlite.js');
+    sqlite.get.mockReturnValue({ token_hash: 'active-session-hash' });
   });
 
   describe('POST /buscar-arquivo', () => {

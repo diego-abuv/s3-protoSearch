@@ -3,6 +3,10 @@ import jwt from 'jsonwebtoken';
 
 vi.mock('jsonwebtoken');
 
+vi.mock('../../src/db/sqlite.js', () => ({
+  get: vi.fn(),
+}));
+
 process.env.JWT_SECRET = 'test-secret';
 process.env.API_KEY = 'my-secret-api-key';
 
@@ -28,9 +32,12 @@ function mockRes() {
 
 describe('jwtMiddleware', () => {
   let jwtMiddleware;
+  let sqlite;
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    sqlite = await import('../../src/db/sqlite.js');
+    sqlite.get.mockReset();
     const mod = await importMiddleware();
     jwtMiddleware = mod.jwtMiddleware;
   });
@@ -93,9 +100,10 @@ describe('jwtMiddleware', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('chama next() e define req.user se token valido', () => {
+  it('chama next() e define req.user se token valido e sessao ativa', () => {
     const decodedUser = { id: 1, username: 'test', role: 'user' };
     jwt.verify.mockReturnValue(decodedUser);
+    sqlite.get.mockReturnValue({ token_hash: 'abc123' });
 
     const req = mockReq({ headers: { authorization: 'Bearer valid.token.here' } });
     const res = mockRes();
@@ -107,6 +115,37 @@ describe('jwtMiddleware', () => {
     expect(req.user).toEqual(decodedUser);
     expect(next).toHaveBeenCalledOnce();
     expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('retorna 401 SESSION_REVOKED se nao ha sessao ativa', () => {
+    const decodedUser = { id: 1, username: 'test', role: 'user' };
+    jwt.verify.mockReturnValue(decodedUser);
+    sqlite.get.mockReturnValue(undefined);
+
+    const req = mockReq({ headers: { authorization: 'Bearer valid.token.here' } });
+    const res = mockRes();
+    const next = vi.fn();
+
+    jwtMiddleware(req, res, next);
+
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({ error: 'Sessão revogada', code: 'SESSION_REVOKED' });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('nao chama get do sqlite se token invalido', () => {
+    jwt.verify.mockImplementation(() => {
+      throw new Error('invalid signature');
+    });
+
+    const req = mockReq({ headers: { authorization: 'Bearer bad.token.here' } });
+    const res = mockRes();
+    const next = vi.fn();
+
+    jwtMiddleware(req, res, next);
+
+    expect(sqlite.get).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
   });
 });
 
@@ -158,9 +197,12 @@ describe('apiKeyMiddleware', () => {
 
 describe('authMiddleware', () => {
   let authMiddleware;
+  let sqlite;
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    sqlite = await import('../../src/db/sqlite.js');
+    sqlite.get.mockReset();
     const mod = await importMiddleware();
     authMiddleware = mod.authMiddleware;
   });
@@ -178,6 +220,7 @@ describe('authMiddleware', () => {
 
   it('usa jwtMiddleware se X-API-Key ausente', () => {
     jwt.verify.mockReturnValue({ id: 1, username: 'test', role: 'user' });
+    sqlite.get.mockReturnValue({ token_hash: 'active-session-hash' });
 
     const req = mockReq({ headers: { authorization: 'Bearer valid.token.here' } });
     const res = mockRes();

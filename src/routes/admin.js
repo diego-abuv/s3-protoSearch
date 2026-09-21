@@ -201,6 +201,7 @@ export function createAdminRoutes() {
 
     const password_hash = bcrypt.hashSync(password, 10);
     run('UPDATE users SET password_hash = ? WHERE id = ?', [password_hash, String(req.params.id)]);
+    run('DELETE FROM refresh_tokens WHERE user_id = ?', [String(req.params.id)]);
     save();
 
     logAudit({

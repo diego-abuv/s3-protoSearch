@@ -55,6 +55,7 @@ describe('Admin Routes', () => {
     sqlite.run.mockReset();
     sqlite.save.mockReset();
     sqlite.logAudit.mockReset();
+    sqlite.get.mockReturnValue({ token_hash: 'active-session-hash' });
   });
 
   describe('GET /admin/users', () => {
@@ -69,7 +70,7 @@ describe('Admin Routes', () => {
     });
 
     it('retorna 200 com lista de usuarios para admin', async () => {
-      sqlite.get.mockReturnValue({ total: 2 });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ total: 2 });
       sqlite.all.mockReturnValue([
         { id: 1, username: 'admin', role: 'admin' },
         { id: 2, username: 'user1', role: 'user' },
@@ -147,7 +148,7 @@ describe('Admin Routes', () => {
     });
 
     it('retorna 409 quando username ja existe', async () => {
-      sqlite.get.mockReturnValue({ id: 1 });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ id: 1 });
       const res = await request(app)
         .post('/admin/users')
         .set('Authorization', `Bearer ${makeAdminToken()}`)
@@ -156,6 +157,7 @@ describe('Admin Routes', () => {
     });
 
     it('retorna 201 na criacao bem-sucedida', async () => {
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue(undefined);
       const res = await request(app)
         .post('/admin/users')
         .set('Authorization', `Bearer ${makeAdminToken()}`)
@@ -184,7 +186,7 @@ describe('Admin Routes', () => {
     });
 
     it('retorna 404 quando usuario nao encontrado', async () => {
-      sqlite.get.mockReturnValue(undefined);
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue(undefined);
       const res = await request(app)
         .patch('/admin/users/999')
         .set('Authorization', `Bearer ${makeAdminToken()}`)
@@ -193,7 +195,7 @@ describe('Admin Routes', () => {
     });
 
     it('retorna 200 na atualizacao bem-sucedida', async () => {
-      sqlite.get.mockReturnValue({ id: 1, username: 'oldname', role: 'user' });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ id: 1, username: 'oldname', role: 'user' });
       const res = await request(app)
         .patch('/admin/users/1')
         .set('Authorization', `Bearer ${makeAdminToken()}`)
@@ -215,13 +217,13 @@ describe('Admin Routes', () => {
     });
 
     it('retorna 404 quando usuario nao encontrado', async () => {
-      sqlite.get.mockReturnValue(undefined);
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue(undefined);
       const res = await request(app).delete('/admin/users/999').set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(res.status).toBe(404);
     });
 
     it('retorna 200 na exclusao bem-sucedida', async () => {
-      sqlite.get.mockReturnValue({ id: 1, username: 'todelete', role: 'user' });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ id: 1, username: 'todelete', role: 'user' });
       const res = await request(app).delete('/admin/users/1').set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(res.status).toBe(200);
       expect(sqlite.run).toHaveBeenCalledWith(expect.stringContaining('DELETE FROM users'), ['1']);
@@ -241,7 +243,7 @@ describe('Admin Routes', () => {
 
     it('retorna 200 com logs de auditoria', async () => {
       sqlite.all.mockReturnValue([{ id: 1, action: 'login', username: 'user1', created_at: '2026-01-01' }]);
-      sqlite.get.mockReturnValue({ total: 1 });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ total: 1 });
       const res = await request(app).get('/admin/audit').set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(res.status).toBe(200);
       expect(res.body.logs).toHaveLength(1);
@@ -250,7 +252,7 @@ describe('Admin Routes', () => {
 
     it('aplica limit e offset padrao', async () => {
       sqlite.all.mockReturnValue([]);
-      sqlite.get.mockReturnValue({ total: 0 });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ total: 0 });
       const res = await request(app).get('/admin/audit').set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(res.status).toBe(200);
       expect(res.body.limit).toBe(50);
@@ -271,6 +273,7 @@ describe('Admin Routes', () => {
 
     it('retorna 200 com estatisticas', async () => {
       sqlite.get
+        .mockReturnValueOnce({ token_hash: 'active-session-hash' })
         .mockReturnValueOnce({ total: 5 })
         .mockReturnValueOnce({ total: 42 })
         .mockReturnValueOnce({ total: 2 })
@@ -289,6 +292,7 @@ describe('Admin Routes', () => {
 
     it('retorna avg_duration_s com valor correto', async () => {
       sqlite.get
+        .mockReturnValueOnce({ token_hash: 'active-session-hash' })
         .mockReturnValueOnce({ total: 1 })
         .mockReturnValueOnce({ total: 1 })
         .mockReturnValueOnce({ total: 1 })
@@ -315,13 +319,13 @@ describe('Admin Routes', () => {
     });
 
     it('retorna 404 quando usuario nao encontrado', async () => {
-      sqlite.get.mockReturnValue(undefined);
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue(undefined);
       const res = await request(app).patch('/admin/users/999/block').set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(res.status).toBe(404);
     });
 
     it('bloqueia usuario (blocked 0 -> 1)', async () => {
-      sqlite.get.mockReturnValue({ id: 1, username: 'testuser', blocked: 0 });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ id: 1, username: 'testuser', blocked: 0 });
       const res = await request(app).patch('/admin/users/1/block').set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(res.status).toBe(200);
       expect(res.body.message).toContain('bloqueado');
@@ -329,7 +333,7 @@ describe('Admin Routes', () => {
     });
 
     it('desbloqueia usuario (blocked 1 -> 0)', async () => {
-      sqlite.get.mockReturnValue({ id: 1, username: 'testuser', blocked: 1 });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ id: 1, username: 'testuser', blocked: 1 });
       const res = await request(app).patch('/admin/users/1/block').set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(res.status).toBe(200);
       expect(res.body.message).toContain('desbloqueado');
@@ -337,7 +341,7 @@ describe('Admin Routes', () => {
     });
 
     it('revoga tokens ao bloquear', async () => {
-      sqlite.get.mockReturnValue({ id: 1, username: 'testuser', blocked: 0 });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ id: 1, username: 'testuser', blocked: 0 });
       await request(app).patch('/admin/users/1/block').set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(sqlite.run).toHaveBeenCalledWith(expect.stringContaining('DELETE FROM refresh_tokens WHERE user_id'), [
         '1',
@@ -345,7 +349,7 @@ describe('Admin Routes', () => {
     });
 
     it('registra audit admin_block_user', async () => {
-      sqlite.get.mockReturnValue({ id: 1, username: 'testuser', blocked: 0 });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ id: 1, username: 'testuser', blocked: 0 });
       await request(app).patch('/admin/users/1/block').set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(sqlite.logAudit).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'admin_block_user', target: 'testuser' }),
@@ -353,7 +357,7 @@ describe('Admin Routes', () => {
     });
 
     it('registra audit admin_unblock_user', async () => {
-      sqlite.get.mockReturnValue({ id: 1, username: 'testuser', blocked: 1 });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ id: 1, username: 'testuser', blocked: 1 });
       await request(app).patch('/admin/users/1/block').set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(sqlite.logAudit).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'admin_unblock_user', target: 'testuser' }),
@@ -375,7 +379,7 @@ describe('Admin Routes', () => {
     });
 
     it('retorna 404 quando usuario nao encontrado', async () => {
-      sqlite.get.mockReturnValue(undefined);
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue(undefined);
       const res = await request(app)
         .post('/admin/users/999/force-logout')
         .set('Authorization', `Bearer ${makeAdminToken()}`);
@@ -383,7 +387,7 @@ describe('Admin Routes', () => {
     });
 
     it('deleta refresh_tokens do usuario', async () => {
-      sqlite.get.mockReturnValue({ id: 1, username: 'testuser' });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ id: 1, username: 'testuser' });
       const res = await request(app)
         .post('/admin/users/1/force-logout')
         .set('Authorization', `Bearer ${makeAdminToken()}`);
@@ -394,7 +398,7 @@ describe('Admin Routes', () => {
     });
 
     it('registra audit admin_force_logout', async () => {
-      sqlite.get.mockReturnValue({ id: 1, username: 'testuser' });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ id: 1, username: 'testuser' });
       await request(app).post('/admin/users/1/force-logout').set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(sqlite.logAudit).toHaveBeenCalledWith(
         expect.objectContaining({ action: 'admin_force_logout', target: 'testuser' }),
@@ -417,7 +421,7 @@ describe('Admin Routes', () => {
     });
 
     it('retorna 404 quando usuario nao encontrado', async () => {
-      sqlite.get.mockReturnValue(undefined);
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue(undefined);
       const res = await request(app)
         .post('/admin/users/999/reset-password')
         .set('Authorization', `Bearer ${makeAdminToken()}`)
@@ -426,7 +430,7 @@ describe('Admin Routes', () => {
     });
 
     it('retorna 400 para senha fraca', async () => {
-      sqlite.get.mockReturnValue({ id: 1, username: 'testuser' });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ id: 1, username: 'testuser' });
       const res = await request(app)
         .post('/admin/users/1/reset-password')
         .set('Authorization', `Bearer ${makeAdminToken()}`)
@@ -435,7 +439,7 @@ describe('Admin Routes', () => {
     });
 
     it('retorna 400 quando password ausente', async () => {
-      sqlite.get.mockReturnValue({ id: 1, username: 'testuser' });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ id: 1, username: 'testuser' });
       const res = await request(app)
         .post('/admin/users/1/reset-password')
         .set('Authorization', `Bearer ${makeAdminToken()}`)
@@ -444,7 +448,7 @@ describe('Admin Routes', () => {
     });
 
     it('atualiza senha do usuario', async () => {
-      sqlite.get.mockReturnValue({ id: 1, username: 'testuser' });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ id: 1, username: 'testuser' });
       const res = await request(app)
         .post('/admin/users/1/reset-password')
         .set('Authorization', `Bearer ${makeAdminToken()}`)
@@ -456,8 +460,19 @@ describe('Admin Routes', () => {
       );
     });
 
+    it('revoga tokens do usuario no reset de senha', async () => {
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ id: 1, username: 'testuser' });
+      await request(app)
+        .post('/admin/users/1/reset-password')
+        .set('Authorization', `Bearer ${makeAdminToken()}`)
+        .send({ password: 'NovaSenha123@' });
+      expect(sqlite.run).toHaveBeenCalledWith(expect.stringContaining('DELETE FROM refresh_tokens WHERE user_id'), [
+        '1',
+      ]);
+    });
+
     it('registra audit admin_reset_password', async () => {
-      sqlite.get.mockReturnValue({ id: 1, username: 'testuser' });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ id: 1, username: 'testuser' });
       await request(app)
         .post('/admin/users/1/reset-password')
         .set('Authorization', `Bearer ${makeAdminToken()}`)
@@ -470,7 +485,7 @@ describe('Admin Routes', () => {
 
   describe('GET /admin/users - status online', () => {
     it('retorna campo is_online para cada usuario', async () => {
-      sqlite.get.mockReturnValue({ total: 2 });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ total: 2 });
       sqlite.all.mockReturnValue([
         { id: 1, username: 'admin', role: 'admin', blocked: 0, last_login: '2026-01-01', is_online: 1 },
         { id: 2, username: 'user1', role: 'user', blocked: 0, last_login: null, is_online: 0 },
@@ -482,7 +497,7 @@ describe('Admin Routes', () => {
     });
 
     it('retorna campo blocked para cada usuario', async () => {
-      sqlite.get.mockReturnValue({ total: 2 });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ total: 2 });
       sqlite.all.mockReturnValue([
         { id: 1, username: 'admin', role: 'admin', blocked: 0, last_login: null, is_online: 0 },
         { id: 2, username: 'blocked_user', role: 'user', blocked: 1, last_login: null, is_online: 0 },
@@ -493,7 +508,7 @@ describe('Admin Routes', () => {
     });
 
     it('retorna campo last_login para cada usuario', async () => {
-      sqlite.get.mockReturnValue({ total: 1 });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ total: 1 });
       sqlite.all.mockReturnValue([
         { id: 1, username: 'admin', role: 'admin', blocked: 0, last_login: '2026-07-15 10:00:00', is_online: 1 },
       ]);
@@ -506,7 +521,7 @@ describe('Admin Routes', () => {
   describe('GET /admin/audit - filtros', () => {
     it('filtra por username', async () => {
       sqlite.all.mockReturnValue([{ id: 1, action: 'login', username: 'user1', created_at: '2026-01-01' }]);
-      sqlite.get.mockReturnValue({ total: 1 });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ total: 1 });
       const res = await request(app).get('/admin/audit?user=user1').set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(res.status).toBe(200);
       expect(sqlite.all).toHaveBeenCalledWith(
@@ -517,7 +532,7 @@ describe('Admin Routes', () => {
 
     it('filtra por action', async () => {
       sqlite.all.mockReturnValue([]);
-      sqlite.get.mockReturnValue({ total: 0 });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ total: 0 });
       const res = await request(app)
         .get('/admin/audit?action=login')
         .set('Authorization', `Bearer ${makeAdminToken()}`);
@@ -527,7 +542,7 @@ describe('Admin Routes', () => {
 
     it('filtra por periodo (from/to)', async () => {
       sqlite.all.mockReturnValue([]);
-      sqlite.get.mockReturnValue({ total: 0 });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ total: 0 });
       const res = await request(app)
         .get('/admin/audit?from=2026-01-01&to=2026-12-31')
         .set('Authorization', `Bearer ${makeAdminToken()}`);
@@ -544,7 +559,7 @@ describe('Admin Routes', () => {
 
     it('combina multiplos filtros', async () => {
       sqlite.all.mockReturnValue([]);
-      sqlite.get.mockReturnValue({ total: 0 });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ total: 0 });
       const res = await request(app)
         .get('/admin/audit?user=user1&action=login&from=2026-01-01')
         .set('Authorization', `Bearer ${makeAdminToken()}`);
@@ -557,7 +572,7 @@ describe('Admin Routes', () => {
 
     it('retorna total correto com filtros', async () => {
       sqlite.all.mockReturnValue([{ id: 1, action: 'login', username: 'user1' }]);
-      sqlite.get.mockReturnValue({ total: 5 });
+      sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ total: 5 });
       const res = await request(app).get('/admin/audit?user=user1').set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(res.status).toBe(200);
       expect(res.body.total).toBe(5);

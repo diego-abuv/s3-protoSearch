@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
+import { get } from '../db/sqlite.js';
 
 const JWT_SECRET = process.env.JWT_SECRET;
 const API_KEY = process.env.API_KEY;
@@ -22,6 +23,15 @@ export function jwtMiddleware(req, res, next) {
     const token = authHeader.split(' ')[1];
     const decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
+
+    const session = get(
+      "SELECT token_hash FROM refresh_tokens WHERE user_id = ? AND revoked = 0 AND expires_at > datetime('now') LIMIT 1",
+      [decoded.id],
+    );
+    if (!session) {
+      return res.status(401).json({ error: 'Sessão revogada', code: 'SESSION_REVOKED' });
+    }
+
     next();
   } catch (err) {
     if (err.name === 'TokenExpiredError') {

@@ -43,7 +43,7 @@ describe('Auth Routes', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     sqlite = await import('../../src/db/sqlite.js');
-    sqlite.get.mockReturnValue(undefined);
+    sqlite.get.mockReturnValue({ token_hash: 'active-session-hash' });
   });
 
   describe('POST /register', () => {
@@ -95,6 +95,7 @@ describe('Auth Routes', () => {
     });
 
     it('retorna 201 no registro bem-sucedido', async () => {
+      sqlite.get.mockReturnValue(undefined);
       const res = await request(app)
         .post('/register')
         .send({ username: 'newuser', password: 'Abcd1234@xyz', adminKey: 'test-admin-key' });
@@ -107,6 +108,7 @@ describe('Auth Routes', () => {
     });
 
     it('cria usuario com role padrao "user"', async () => {
+      sqlite.get.mockReturnValue(undefined);
       const res = await request(app)
         .post('/register')
         .send({ username: 'defaultrole', password: 'Abcd1234@xyz', adminKey: 'test-admin-key' });
@@ -118,6 +120,7 @@ describe('Auth Routes', () => {
     });
 
     it('cria usuario com role customizada', async () => {
+      sqlite.get.mockReturnValue(undefined);
       const res = await request(app)
         .post('/register')
         .send({ username: 'customrole', password: 'Abcd1234@xyz', adminKey: 'test-admin-key', role: 'admin' });
@@ -215,6 +218,7 @@ describe('Auth Routes', () => {
     });
 
     it('retorna 401 com refresh token invalido', async () => {
+      sqlite.get.mockReturnValue(undefined);
       const res = await request(app).post('/refresh').set('Cookie', 'refresh_token=invalid-or-expired');
       expect(res.status).toBe(401);
     });

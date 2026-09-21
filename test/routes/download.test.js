@@ -49,8 +49,10 @@ describe('Download Routes', () => {
     app = await createApp({ findFileAndGetSignedUrl: vi.fn() });
   });
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const sqlite = await import('../../src/db/sqlite.js');
+    sqlite.get.mockReturnValue({ token_hash: 'active-session-hash' });
   });
 
   describe('GET /download-local', () => {
