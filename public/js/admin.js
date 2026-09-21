@@ -555,17 +555,16 @@ document.getElementById('btnSalvarNovo').addEventListener('click', async () => {
 });
 
 // ── Editar usuario ────────────────────────────────────
-document.getElementById('usersTableBody').addEventListener('click', (e) => {
+function handleEditUserClick(e) {
   const btn = e.target.closest('.btn-edit');
-  if (btn) {
-    document.getElementById('editUserId').value = btn.dataset.id;
-    document.getElementById('editUsername').value = btn.dataset.username;
-    document.getElementById('editRole').value = btn.dataset.role;
-    document.getElementById('editPassword').value = '';
-    document.getElementById('editUserError').classList.add('d-none');
-    new bootstrap.Modal(document.getElementById('modalEditar')).show();
-  }
-});
+  if (!btn) return;
+  document.getElementById('editUserId').value = btn.dataset.id;
+  document.getElementById('editUsername').value = btn.dataset.username;
+  document.getElementById('editRole').value = btn.dataset.role;
+  document.getElementById('editPassword').value = '';
+  document.getElementById('editUserError').classList.add('d-none');
+  new bootstrap.Modal(document.getElementById('modalEditar')).show();
+}
 
 document.getElementById('btnSalvarEdicao').addEventListener('click', async () => {
   const id = document.getElementById('editUserId').value;
@@ -607,15 +606,14 @@ document.getElementById('btnSalvarEdicao').addEventListener('click', async () =>
 });
 
 // ── Forcar logout ─────────────────────────────────────
-document.getElementById('usersTableBody').addEventListener('click', (e) => {
+function handleForceLogoutClick(e) {
   const btn = e.target.closest('.btn-force-logout');
-  if (btn) {
-    document.getElementById('forceLogoutUserId').value = btn.dataset.id;
-    document.getElementById('forceLogoutUserName').textContent = btn.dataset.username;
-    document.getElementById('forceLogoutError').classList.add('d-none');
-    new bootstrap.Modal(document.getElementById('modalForceLogout')).show();
-  }
-});
+  if (!btn) return;
+  document.getElementById('forceLogoutUserId').value = btn.dataset.id;
+  document.getElementById('forceLogoutUserName').textContent = btn.dataset.username;
+  document.getElementById('forceLogoutError').classList.add('d-none');
+  new bootstrap.Modal(document.getElementById('modalForceLogout')).show();
+}
 
 document.getElementById('btnConfirmarForceLogout').addEventListener('click', async () => {
   const id = document.getElementById('forceLogoutUserId').value;
@@ -633,8 +631,47 @@ document.getElementById('btnConfirmarForceLogout').addEventListener('click', asy
   }
 });
 
+// ── Confirmacao generica (modal Bootstrap) ───────────
+function askConfirm({ title, message, okText, okClass = 'btn-danger' }) {
+  return new Promise((resolve) => {
+    const modalEl = document.getElementById('modalConfirm');
+    if (!modalEl) return resolve(false);
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmMessage').textContent = message;
+    const okBtn = document.getElementById('confirmOkBtn');
+    okBtn.textContent = okText;
+    okBtn.className = `btn btn-sm ${okClass}`;
+    const cancelBtn = modalEl.querySelector('.modal-footer .btn-outline-secondary');
+
+    let settled = false;
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      cancelBtn.removeEventListener('click', onCancel);
+      okBtn.removeEventListener('click', onOk);
+      modalEl.removeEventListener('hidden.bs.modal', onHidden);
+      resolve(result);
+    };
+    const onCancel = () => {
+      modal.hide();
+      finish(false);
+    };
+    const onOk = () => {
+      modal.hide();
+      finish(true);
+    };
+    const onHidden = () => finish(false);
+
+    const modal = new bootstrap.Modal(modalEl);
+    cancelBtn.addEventListener('click', onCancel);
+    okBtn.addEventListener('click', onOk);
+    modalEl.addEventListener('hidden.bs.modal', onHidden);
+    modal.show();
+  });
+}
+
 // ── Bloquear / Desbloquear ────────────────────────────
-document.getElementById('usersTableBody').addEventListener('click', async (e) => {
+async function handleToggleBlockClick(e) {
   const btn = e.target.closest('.btn-toggle-block');
   if (!btn) return;
 
@@ -643,7 +680,13 @@ document.getElementById('usersTableBody').addEventListener('click', async (e) =>
   const isBlocked = btn.dataset.blocked === '1';
   const action = isBlocked ? 'desbloquear' : 'bloquear';
 
-  if (!confirm(`Deseja ${action} o usuario "${username}"?`)) return;
+  const confirmed = await askConfirm({
+    title: isBlocked ? 'Confirmar desbloqueio' : 'Confirmar bloqueio',
+    message: `Deseja ${action} o usuario "${username}"?`,
+    okText: action,
+    okClass: isBlocked ? 'btn-outline-success' : 'btn-danger',
+  });
+  if (!confirmed) return;
 
   try {
     await API.patch(`/admin/users/${id}/block`);
@@ -653,18 +696,25 @@ document.getElementById('usersTableBody').addEventListener('click', async (e) =>
   } catch (err) {
     showToast(`Erro: ${err.message}`, 'error');
   }
-});
+}
 
 // ── Excluir usuario ───────────────────────────────────
-document.getElementById('usersTableBody').addEventListener('click', (e) => {
+function handleDeleteUserClick(e) {
   const btn = e.target.closest('.btn-delete');
-  if (btn) {
-    document.getElementById('deleteUserId').value = btn.dataset.id;
-    document.getElementById('deleteUserName').textContent = btn.dataset.username;
-    document.getElementById('deleteUserError').classList.add('d-none');
-    new bootstrap.Modal(document.getElementById('modalExcluir')).show();
-  }
-});
+  if (!btn) return;
+  document.getElementById('deleteUserId').value = btn.dataset.id;
+  document.getElementById('deleteUserName').textContent = btn.dataset.username;
+  document.getElementById('deleteUserError').classList.add('d-none');
+  new bootstrap.Modal(document.getElementById('modalExcluir')).show();
+}
+
+function bindUserTableActions(tbody) {
+  if (!tbody) return;
+  tbody.addEventListener('click', handleEditUserClick);
+  tbody.addEventListener('click', handleForceLogoutClick);
+  tbody.addEventListener('click', handleToggleBlockClick);
+  tbody.addEventListener('click', handleDeleteUserClick);
+}
 
 document.getElementById('btnConfirmarExclusao').addEventListener('click', async () => {
   const id = document.getElementById('deleteUserId').value;
@@ -822,6 +872,8 @@ document.getElementById('auditFilterAction')?.addEventListener('change', (e) => 
 });
 
 initAuditUserCombobox();
+bindUserTableActions(document.getElementById('usersTableBody'));
+bindUserTableActions(document.getElementById('usersPreviewBody'));
 
 // ── Init ──────────────────────────────────────────────
 document.addEventListener('session-ready', async (event) => {
