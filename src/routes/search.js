@@ -1,14 +1,14 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import crypto from 'node:crypto';
-import { authMiddleware } from '../middleware/auth.js';
+import { authMiddleware, hasActiveSession } from '../middleware/auth.js';
 import { sanitizeError } from '../utils/errorCodes.js';
 import { logger, createContextLogger } from '../utils/logger.js';
 import { logAudit } from '../db/sqlite.js';
 
 const searchTokens = new Map();
 
-export function createSearchRoutes(searchableService) {
+export function createSearchRoutes(searchableService, { heartbeatMs = 20_000 } = {}) {
   const router = Router();
 
   const searchLimiter = rateLimit({
@@ -89,11 +89,17 @@ export function createSearchRoutes(searchableService) {
 
       const heartbeatInterval = setInterval(() => {
         try {
+          if (!hasActiveSession(req.user.id)) {
+            res.write(`event: session_revoked\ndata: {}\n\n`);
+            cancelledByUser = false;
+            externalAbort.abort();
+            return;
+          }
           res.write(`event: heartbeat\ndata: {}\n\n`);
         } catch {
           /* connection already closed */
         }
-      }, 20_000);
+      }, heartbeatMs);
 
       const cleanup = () => {
         clearInterval(heartbeatInterval);

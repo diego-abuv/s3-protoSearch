@@ -141,6 +141,10 @@ form.addEventListener('submit', async (event) => {
                 addProgressStep(data.message);
               } else if (eventType === 'result') {
                 finalData = data;
+              } else if (eventType === 'session_revoked') {
+                abortController.abort();
+                Auth.logout();
+                return;
               }
             } catch {
               /* ignore parse errors */

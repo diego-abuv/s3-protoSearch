@@ -64,3 +64,10 @@ export function adminMiddleware(req, res, next) {
   }
   next();
 }
+
+export function hasActiveSession(userId) {
+  return !!get(
+    "SELECT 1 FROM refresh_tokens WHERE user_id = ? AND revoked = 0 AND expires_at > datetime('now') LIMIT 1",
+    [userId],
+  );
+}

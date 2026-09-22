@@ -288,3 +288,30 @@ describe('adminMiddleware', () => {
     expect(next).not.toHaveBeenCalled();
   });
 });
+
+describe('hasActiveSession', () => {
+  let hasActiveSession;
+  let sqlite;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    sqlite = await import('../../src/db/sqlite.js');
+    sqlite.get.mockReset();
+    const mod = await importMiddleware();
+    hasActiveSession = mod.hasActiveSession;
+  });
+
+  it('retorna true se existe sessao ativa', () => {
+    sqlite.get.mockReturnValue({ token_hash: 'abc' });
+    expect(hasActiveSession(1)).toBe(true);
+    expect(sqlite.get).toHaveBeenCalledWith(
+      expect.stringContaining('refresh_tokens'),
+      [1],
+    );
+  });
+
+  it('retorna false se nao ha sessao ativa', () => {
+    sqlite.get.mockReturnValue(undefined);
+    expect(hasActiveSession(99)).toBe(false);
+  });
+});

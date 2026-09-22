@@ -16,7 +16,7 @@ const __dirname = path.dirname(__filename);
 
 const PROTECTED_JS = ['/js/search.js', '/js/admin.js', '/js/render.js'];
 
-export async function createApp(searchableService) {
+export async function createApp(searchableService, searchOptions) {
   const app = express();
 
   app.disable('x-powered-by');
@@ -47,7 +47,7 @@ export async function createApp(searchableService) {
   app.use(express.static(path.resolve(__dirname, '..', 'public')));
 
   app.use(createAuthRoutes());
-  app.use(createSearchRoutes(searchableService));
+  app.use(createSearchRoutes(searchableService, searchOptions));
   app.use(createDownloadRoutes());
   app.use(createAdminRoutes());
 

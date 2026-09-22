@@ -47,7 +47,7 @@ describe('Search Routes', () => {
 
   beforeAll(async () => {
     mockService = { findFileAndGetSignedUrl: vi.fn() };
-    app = await createApp(mockService);
+    app = await createApp(mockService, { heartbeatMs: 50 });
   });
 
   beforeEach(async () => {
@@ -394,6 +394,36 @@ describe('Search Routes', () => {
         expect.stringContaining('Response: 500 POST /buscar-arquivo (erro: Falha interna)'),
       );
     });
+  });
+
+  describe('SSE session revocation', () => {
+    it('envia session_revoked e aborta busca quando sessao e revogada no heartbeat', async () => {
+      sqlite.get
+        .mockReturnValueOnce({ token_hash: 'active-session-hash' })
+        .mockReturnValue(undefined);
+
+      const buscaBloqueante = vi.fn().mockImplementation(
+        (_pasta, _nome, _log, _onProgress, signal) =>
+          new Promise((resolve) => {
+            const resultado = {
+              arquivos: null,
+              status: { s3: 'nao_encontrado', local: 'cancelado', cancelado: true },
+            };
+            if (signal?.aborted) { resolve(resultado); return; }
+            signal?.addEventListener('abort', () => resolve(resultado), { once: true });
+          }),
+      );
+      mockService.findFileAndGetSignedUrl.mockImplementation(buscaBloqueante);
+
+      const res = await request(app)
+        .post('/buscar-arquivo')
+        .set('Authorization', `Bearer ${makeToken()}`)
+        .set('Accept', 'text/event-stream')
+        .send({ pasta: '2024/01/02', nomeProtocolo: '12345' })
+        .timeout(5000);
+
+      expect(res.text).toContain('event: session_revoked');
+    }, 10000);
   });
 
   describe('POST /cancel-search/:token', () => {
