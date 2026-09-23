@@ -4,7 +4,7 @@ import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import https from 'https';
 import { authMiddleware } from '../middleware/auth.js';
-import { logger } from '../utils/logger.js';
+import { createContextLogger } from '../utils/logger.js';
 
 const s3Client = new S3Client({
   region: process.env.AWS_REGION,
@@ -42,6 +42,7 @@ export function createDownloadRoutes() {
 
   router.get('/download-local', authMiddleware, (req, res) => {
     const rawPath = req.query.file;
+    const ctxLog = createContextLogger({ username: req.user.username });
 
     if (!rawPath) {
       return res.status(400).send('Parâmetro "file" não especificado.');
@@ -56,7 +57,7 @@ export function createDownloadRoutes() {
     });
 
     if (!isPathValid) {
-      logger.warn(`Tentativa de path-traversal bloqueada: ${rawPath} -> ${resolvedPath}`);
+      ctxLog.warn(`Tentativa de path-traversal bloqueada: ${rawPath} -> ${resolvedPath}`);
       return res.status(403).send('Acesso negado.');
     }
 
@@ -65,6 +66,7 @@ export function createDownloadRoutes() {
 
   router.get('/download-s3', authMiddleware, async (req, res) => {
     const { key, nome } = req.query;
+    const ctxLog = createContextLogger({ username: req.user.username });
 
     if (!key) {
       return res.status(400).send('Parâmetro "key" não especificado.');
@@ -84,7 +86,7 @@ export function createDownloadRoutes() {
 
       Body.pipe(res);
     } catch (err) {
-      logger.error(`Erro ao baixar do S3 (key=${key}): ${err.message}`);
+      ctxLog.error(`Erro ao baixar do S3 (key=${key}): ${err.message}`);
       res.status(500).send('Erro ao baixar arquivo do S3.');
     }
   });

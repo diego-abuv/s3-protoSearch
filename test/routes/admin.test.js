@@ -29,6 +29,18 @@ vi.mock('../../src/db/sqlite.js', () => ({
   logAudit: vi.fn(),
 }));
 
+vi.mock('../../src/utils/logger.js', () => ({
+  systemLog: { info: vi.fn(), error: vi.fn(), success: vi.fn(), warn: vi.fn(), section: vi.fn(), destaque: vi.fn() },
+  createContextLogger: vi.fn(() => ({
+    info: vi.fn(),
+    error: vi.fn(),
+    success: vi.fn(),
+    warn: vi.fn(),
+    section: vi.fn(),
+    destaque: vi.fn(),
+  })),
+}));
+
 import { createApp } from '../../src/app.js';
 
 function makeAdminToken() {
@@ -352,15 +364,18 @@ describe('Admin Routes', () => {
       sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ id: 1, username: 'testuser', blocked: 0 });
       await request(app).patch('/admin/users/1/block').set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(sqlite.logAudit).toHaveBeenCalledWith(
-        expect.objectContaining({ action: 'admin_block_user', target: 'testuser' }),
+        expect.objectContaining({ action: 'admin_block_user', target: 'testuser', details: 'blocked=1, target_user=testuser' }),
       );
+      const loggerMod = await import('../../src/utils/logger.js');
+      const ctxLogger = loggerMod.createContextLogger.mock.results[0].value;
+      expect(ctxLogger.info).toHaveBeenCalledWith(expect.stringContaining('bloqueou'));
     });
 
     it('registra audit admin_unblock_user', async () => {
       sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ id: 1, username: 'testuser', blocked: 1 });
       await request(app).patch('/admin/users/1/block').set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(sqlite.logAudit).toHaveBeenCalledWith(
-        expect.objectContaining({ action: 'admin_unblock_user', target: 'testuser' }),
+        expect.objectContaining({ action: 'admin_unblock_user', target: 'testuser', details: 'blocked=0, target_user=testuser' }),
       );
     });
   });
@@ -401,8 +416,11 @@ describe('Admin Routes', () => {
       sqlite.get.mockReturnValueOnce({ token_hash: 'active-session-hash' }).mockReturnValue({ id: 1, username: 'testuser' });
       await request(app).post('/admin/users/1/force-logout').set('Authorization', `Bearer ${makeAdminToken()}`);
       expect(sqlite.logAudit).toHaveBeenCalledWith(
-        expect.objectContaining({ action: 'admin_force_logout', target: 'testuser' }),
+        expect.objectContaining({ action: 'admin_force_logout', target: 'testuser', details: 'target_user=testuser, sessions_revoked=all' }),
       );
+      const loggerMod = await import('../../src/utils/logger.js');
+      const ctxLogger = loggerMod.createContextLogger.mock.results[0].value;
+      expect(ctxLogger.info).toHaveBeenCalledWith(expect.stringContaining('revogou todas as sessões'));
     });
   });
 
@@ -478,7 +496,7 @@ describe('Admin Routes', () => {
         .set('Authorization', `Bearer ${makeAdminToken()}`)
         .send({ password: 'NovaSenha123@' });
       expect(sqlite.logAudit).toHaveBeenCalledWith(
-        expect.objectContaining({ action: 'admin_reset_password', target: 'testuser' }),
+        expect.objectContaining({ action: 'admin_reset_password', target: 'testuser', details: 'target_user=testuser, password_changed=true' }),
       );
     });
   });

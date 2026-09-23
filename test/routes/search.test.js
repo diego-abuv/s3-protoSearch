@@ -22,7 +22,7 @@ vi.mock('../../src/db/sqlite.js', () => ({
 }));
 
 vi.mock('../../src/utils/logger.js', () => ({
-  logger: { info: vi.fn(), error: vi.fn(), success: vi.fn(), warn: vi.fn(), section: vi.fn(), destaque: vi.fn() },
+  systemLog: { info: vi.fn(), error: vi.fn(), success: vi.fn(), warn: vi.fn(), section: vi.fn(), destaque: vi.fn() },
   createContextLogger: vi.fn(() => ({
     info: vi.fn(),
     error: vi.fn(),

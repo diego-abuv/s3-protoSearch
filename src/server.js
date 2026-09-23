@@ -1,22 +1,22 @@
 import 'dotenv/config';
 import { createApp } from './app.js';
 import os from 'os';
-import { logger } from './utils/logger.js';
+import { systemLog } from './utils/logger.js';
 
 process.on('unhandledRejection', (reason) => {
-  logger.error('Unhandled rejection:', reason);
+  systemLog.error('Unhandled rejection:', reason);
   process.exit(1);
 });
 process.on('uncaughtException', (err) => {
-  logger.error('Uncaught exception:', err);
+  systemLog.error('Uncaught exception:', err);
   process.exit(1);
 });
 process.on('SIGTERM', () => {
-  logger.info('Servidor encerrando (SIGTERM)');
+  systemLog.info('Servidor encerrando (SIGTERM)');
   process.exit(0);
 });
 process.on('SIGINT', () => {
-  logger.info('Servidor encerrando (SIGINT)');
+  systemLog.info('Servidor encerrando (SIGINT)');
   process.exit(0);
 });
 process.on('exit', (code) => {
@@ -39,21 +39,21 @@ function getLocalIp() {
 
 async function startServer() {
   if (!process.env.JWT_SECRET) {
-    logger.error('JWT_SECRET não configurado ou incorreto.');
+    systemLog.error('JWT_SECRET não configurado ou incorreto.');
     process.exit(1);
   }
 
   if (!process.env.API_KEY) {
-    logger.error('API_KEY não configurado ou incorreto.');
+    systemLog.error('API_KEY não configurado ou incorreto.');
     process.exit(1);
   }
 
   if (!process.env.ADMIN_KEY) {
-    logger.error('ADMIN_KEY não configurado ou incorreto.');
+    systemLog.error('ADMIN_KEY não configurado ou incorreto.');
     process.exit(1);
   }
 
-  logger.info('Iniciando servidor com serviço de busca unificado (S3 com fallback local)...');
+  systemLog.info('Iniciando servidor com serviço de busca unificado (S3 com fallback local)...');
   const searchableService = await import('./services/unifiedSearchService.js');
 
   const app = await createApp(searchableService);
@@ -64,7 +64,7 @@ async function startServer() {
   const portSuffix = port == 80 || port == 443 ? '' : `:${port}`;
 
   const server = app.listen(port, host, () => {
-    logger.info(
+    systemLog.info(
       `Servidor rodando em ${publicProtocol}://${host}:${port}, acessível em ${publicProtocol}://${publicHost}${portSuffix}`,
     );
   });

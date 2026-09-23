@@ -4,6 +4,7 @@ import rateLimit from 'express-rate-limit';
 import { authMiddleware, adminMiddleware } from '../middleware/auth.js';
 import { all, get, run, save, logAudit } from '../db/sqlite.js';
 import { validatePassword, validateUsername, sanitizeInput } from '../utils/validation.js';
+import { createContextLogger } from '../utils/logger.js';
 
 const adminLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -73,10 +74,13 @@ export function createAdminRoutes() {
       username: req.user.username,
       action: 'admin_create_user',
       target: username,
-      details: `role=${role || 'user'}`,
+      details: `role=${role || 'user'}, target_user=${username}`,
       ip: req.ip,
     });
 
+    createContextLogger({ username: req.user.username }).info(
+      `Admin criou usuário ${username} (role=${role || 'user'})`,
+    );
     res.status(201).json({ message: 'Usuário criado com sucesso' });
   });
 
@@ -117,10 +121,13 @@ export function createAdminRoutes() {
       username: req.user.username,
       action: 'admin_update_user',
       target: user.username,
-      details: `username=${username || user.username}, role=${role || user.role}${password ? ', password=changed' : ''}`,
+      details: `fields=${[username && 'username', role && 'role', password && 'password'].filter(Boolean).join(',')}, target_user=${user.username}`,
       ip: req.ip,
     });
 
+    createContextLogger({ username: req.user.username }).info(
+      `Admin atualizou usuário ${user.username} (fields=${[username && 'username', role && 'role', password && 'password'].filter(Boolean).join(',')})`,
+    );
     res.status(200).json({ message: 'Usuário atualizado com sucesso' });
   });
 
@@ -141,6 +148,9 @@ export function createAdminRoutes() {
       ip: req.ip,
     });
 
+    createContextLogger({ username: req.user.username }).info(
+      `Admin excluiu usuário ${user.username} (role=${user.role})`,
+    );
     res.status(200).json({ message: 'Usuário excluído com sucesso' });
   });
 
@@ -162,10 +172,13 @@ export function createAdminRoutes() {
       username: req.user.username,
       action: newBlocked ? 'admin_block_user' : 'admin_unblock_user',
       target: user.username,
-      details: `blocked=${newBlocked}`,
+      details: `blocked=${newBlocked}, target_user=${user.username}`,
       ip: req.ip,
     });
 
+    createContextLogger({ username: req.user.username }).info(
+      `Admin ${newBlocked ? 'bloqueou' : 'desbloqueou'} usuário ${user.username}`,
+    );
     res.json({ message: newBlocked ? 'Usuário bloqueado' : 'Usuário desbloqueado' });
   });
 
@@ -181,9 +194,11 @@ export function createAdminRoutes() {
       username: req.user.username,
       action: 'admin_force_logout',
       target: user.username,
+      details: `target_user=${user.username}, sessions_revoked=all`,
       ip: req.ip,
     });
 
+    createContextLogger({ username: req.user.username }).info(`Admin revogou todas as sessões de ${user.username}`);
     res.json({ message: 'Sessões revogadas com sucesso' });
   });
 
@@ -209,9 +224,11 @@ export function createAdminRoutes() {
       username: req.user.username,
       action: 'admin_reset_password',
       target: user.username,
+      details: `target_user=${user.username}, password_changed=true`,
       ip: req.ip,
     });
 
+    createContextLogger({ username: req.user.username }).info(`Admin redefiniu a senha de ${user.username}`);
     res.json({ message: 'Senha redefinida com sucesso' });
   });
 

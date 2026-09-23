@@ -90,11 +90,12 @@ describe('findFileAndGetSignedUrl', () => {
 
     const result = await findFileAndGetSignedUrl('2024/01/02', '0336637208');
 
-    expect(Array.isArray(result)).toBe(true);
-    expect(result).toHaveLength(1);
-    expect(result[0].downloadUrl).toContain('/download-s3?key=');
-    expect(result[0].downloadUrl).toContain(encodeURIComponent('2024/01/02/0336637208_audio.wav'));
-    expect(result[0].nomeParaDownload).toBe('0336637208_audio.wav');
+    expect(result.arquivos).toHaveLength(1);
+    expect(result.arquivos[0].downloadUrl).toContain('/download-s3?key=');
+    expect(result.arquivos[0].downloadUrl).toContain(encodeURIComponent('2024/01/02/0336637208_audio.wav'));
+    expect(result.arquivos[0].nomeParaDownload).toBe('0336637208_audio.wav');
+    expect(result._meta.bucket).toBe('bc-audios');
+    expect(result._meta.cache).toBe(false);
   });
 
   it('retorna null quando S3 nao encontra arquivos', async () => {
@@ -104,7 +105,8 @@ describe('findFileAndGetSignedUrl', () => {
 
     const result = await findFileAndGetSignedUrl('2024/01/02', '0336637208');
 
-    expect(result).toBeNull();
+    expect(result.arquivos).toBeNull();
+    expect(result._meta.bucket).toBe('bc-audios');
   });
 
   it('propaga erro quando S3 lanca excecao', async () => {
@@ -127,8 +129,8 @@ describe('findFileAndGetSignedUrl', () => {
 
     const result = await findFileAndGetSignedUrl('2024/01/02', 'a');
 
-    expect(result).toHaveLength(1);
-    expect(result[0].nomeParaDownload).toBe('a.mp3');
+    expect(result.arquivos).toHaveLength(1);
+    expect(result.arquivos[0].nomeParaDownload).toBe('a.mp3');
   });
 
   it('usa cache quando disponivel e nao chama S3', async () => {
@@ -137,9 +139,25 @@ describe('findFileAndGetSignedUrl', () => {
 
     const result = await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
 
-    expect(result).toEqual(cachedResult);
+    expect(result.arquivos).toEqual(cachedResult);
+    expect(result._meta.cache).toBe(true);
     expect(mockSend).not.toHaveBeenCalled();
     expect(cacheGet).toHaveBeenCalled();
+  });
+
+  it('reutiliza cache no novo formato preservando prefixos', async () => {
+    const cachedResult = {
+      arquivos: [{ downloadUrl: '/download-s3?key=cached.mp3', nomeParaDownload: 'cached.mp3' }],
+      prefixes: ['2024/01/02/', '2024/01/2/'],
+    };
+    cacheGet.mockResolvedValue(cachedResult);
+
+    const result = await findFileAndGetSignedUrl('2024/01/02', 'protocolo');
+
+    expect(result.arquivos).toEqual(cachedResult.arquivos);
+    expect(result._meta.cache).toBe(true);
+    expect(result._meta.prefixes).toEqual(['2024/01/02/', '2024/01/2/']);
+    expect(mockSend).not.toHaveBeenCalled();
   });
 
   it('consulta S3 e popula cache quando cache miss', async () => {
@@ -156,7 +174,7 @@ describe('findFileAndGetSignedUrl', () => {
 
     const result = await findFileAndGetSignedUrl('2024/01/02', 'arquivo');
 
-    expect(result).toHaveLength(1);
+    expect(result.arquivos).toHaveLength(1);
     expect(mockSend).toHaveBeenCalled();
     expect(cacheSet).toHaveBeenCalled();
   });

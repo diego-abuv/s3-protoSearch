@@ -3,7 +3,7 @@ import { S3Client, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 import https from 'https';
 import path from 'path';
-import { logger } from '../utils/logger.js';
+import { systemLog } from '../utils/logger.js';
 import { withRetry } from '../utils/retry.js';
 import { cacheGet, cacheSet } from '../utils/cache.js';
 
@@ -35,7 +35,7 @@ export function generatePrefixes(ano, mes, dia) {
   return [...new Set([`${ano}/${m}/${d}/`, `${ano}/${m}/${d2}/`, `${ano}/${m2}/${d2}/`, `${ano}/${m2}/${d}/`])];
 }
 
-async function fetchS3Listing(prefixo, signal) {
+async function fetchS3Listing(prefixo, signal, log) {
   let allContents = [];
   let continuationToken = undefined;
   let isTruncated = true;
@@ -54,6 +54,7 @@ async function fetchS3Listing(prefixo, signal) {
       label: `ListObjects ${prefixo}`,
       maxRetries: 4,
       baseDelay: 2000,
+      log,
     });
 
     if (listResponse.Contents) {
@@ -81,7 +82,7 @@ async function searchPrefix(prefixo, termoBuscado, signal, log) {
     log.info(`Cache hit: lista S3 para ${prefixo}`);
     contents = cachedListing;
   } else {
-    const fetched = await fetchS3Listing(prefixo, signal);
+    const fetched = await fetchS3Listing(prefixo, signal, log);
     if (!fetched) return null;
     await cacheSet(cacheKey, fetched, 300);
     contents = fetched;
@@ -100,12 +101,15 @@ async function searchPrefix(prefixo, termoBuscado, signal, log) {
   return null;
 }
 
-export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger) {
+export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = systemLog) {
   const cacheKey = `s3:${pasta}:${nomeProtocolo}`;
   const cached = await cacheGet(cacheKey);
   if (cached) {
     log.info('Cache hit S3');
-    return cached;
+    if (Array.isArray(cached)) {
+      return { arquivos: cached, _meta: { bucket: bucketName, prefixes: [], cache: true } };
+    }
+    return { arquivos: cached.arquivos, _meta: { bucket: bucketName, prefixes: cached.prefixes || [], cache: true } };
   }
 
   const [ano, mes, dia] = pasta.split('/');
@@ -136,7 +140,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
 
   if (arquivosEncontrados.length === 0) {
     log.info('Nenhum arquivo encontrado no S3.');
-    return null;
+    return { arquivos: null, _meta: { bucket: bucketName, prefixes, cache: false } };
   }
 
   log.info(`Gerando URLs para ${arquivosEncontrados.length} arquivos`);
@@ -149,8 +153,8 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
     };
   });
 
-  await cacheSet(cacheKey, resultados, 600);
+  await cacheSet(cacheKey, { arquivos: resultados, prefixes }, 600);
 
   log.section('Busca S3 finalizada');
-  return resultados;
+  return { arquivos: resultados, _meta: { bucket: bucketName, prefixes, cache: false } };
 }

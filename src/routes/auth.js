@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import rateLimit from 'express-rate-limit';
 import { logAudit, get, run, save } from '../db/sqlite.js';
-import { logger } from '../utils/logger.js';
+import { createContextLogger } from '../utils/logger.js';
 import { validatePassword, validateUsername, sanitizeInput } from '../utils/validation.js';
 import { loginLimiter, authMiddleware } from '../middleware/auth.js';
 
@@ -78,7 +78,7 @@ export function createAuthRoutes() {
     ]);
     save();
 
-    logger.info(`Novo usuário registrado: ${username}`);
+    createContextLogger({ username }).info('Novo usuário registrado');
     res.status(201).json({ message: 'usuário criado' });
   });
 
@@ -96,10 +96,26 @@ export function createAuthRoutes() {
 
     const user = get('SELECT * FROM users WHERE username = ?', [username]);
     if (!user || !bcrypt.compareSync(password, user.password_hash)) {
+      logAudit({
+        user_id: user?.id ?? null,
+        username: username,
+        action: 'login',
+        details: `success=false, reason=invalid_credentials`,
+        ip: req.ip,
+      });
+      createContextLogger({ username }).info('Login falhou: credenciais inválidas');
       return res.status(401).json({ error: 'credenciais inválidas' });
     }
 
     if (user.blocked) {
+      logAudit({
+        user_id: user.id,
+        username: user.username,
+        action: 'login',
+        details: `success=false, reason=account_blocked`,
+        ip: req.ip,
+      });
+      createContextLogger({ username: user.username }).info('Login bloqueado: conta bloqueada');
       return res.status(403).json({ error: 'Conta bloqueada. Contate o administrador.' });
     }
 
@@ -121,10 +137,11 @@ export function createAuthRoutes() {
       user_id: user.id,
       username: user.username,
       action: 'login',
+      details: 'success=true',
       ip: req.ip,
     });
 
-    logger.info(`Login: ${username}`);
+    createContextLogger({ username: user.username }).info('Login realizado com sucesso');
     res.json({ access_token: accessToken, expires_in: 900 });
   });
 
@@ -160,20 +177,22 @@ export function createAuthRoutes() {
 
   router.post('/logout', authMiddleware, (req, res) => {
     const raw = req.cookies?.refresh_token;
+
     if (raw) {
       revokeRefreshToken(raw);
-      logger.info('Logout realizado');
     }
 
     logAudit({
       user_id: req.user.id,
       username: req.user.username,
       action: 'logout',
+      details: `user=${req.user.username}`,
       ip: req.ip,
     });
 
+    createContextLogger({ username: req.user.username }).info('Logout realizado com sucesso');
     res.clearCookie('refresh_token', { path: '/' });
-    res.json({ message: 'logout ok' });
+    res.json({ message: `Logout realizado com sucesso!` });
   });
 
   router.get('/me', authMiddleware, (req, res) => {

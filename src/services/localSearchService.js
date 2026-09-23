@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import fs from 'fs/promises';
 import path from 'path';
-import { logger } from '../utils/logger.js';
+import { systemLog } from '../utils/logger.js';
 
 const SCAN_LEVEL0_TIMEOUT_MS = 600_000;
 
@@ -55,7 +55,7 @@ function getShareFriendlyName(searchRoot) {
   return match ? `Servidor ${match[1]}` : 'Servidor';
 }
 
-async function scanDayDir(dirPath, targetName, signal, log = logger) {
+async function scanDayDir(dirPath, targetName, signal, log = systemLog) {
   const nivel0 = [];
   const hourDirs = [];
   let items;
@@ -82,14 +82,16 @@ async function scanDayDir(dirPath, targetName, signal, log = logger) {
   return { nivel0, hourDirs };
 }
 
-export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger, externalSignal, onProgress) {
+export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = systemLog, externalSignal, onProgress) {
   log.section('Início da requisição de busca local');
   log.info(`- Data do Protocolo (pasta): ${pasta}`);
   log.info(`- Nome do Arquivo (nomeProtocolo): ${nomeProtocolo}`);
 
+  const serversConsulted = [];
+
   if (externalSignal?.aborted) {
     log.warn('Busca local interrompida (conexão perdida).');
-    return null;
+    return { arquivos: null, _meta: { servers: serversConsulted } };
   }
 
   const [ano, mes, dia] = pasta.split('/');
@@ -99,7 +101,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
 
   if (!pathConfigs || pathConfigs.length === 0) {
     log.error(`Nenhuma configuração de caminho associada ao ano ${anoBusca} encontrada no .env.`);
-    return null;
+    return { arquivos: null, _meta: { servers: serversConsulted } };
   }
 
   let algumCaminhoAcessivel = false;
@@ -122,6 +124,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
       }
 
       algumCaminhoAcessivel = true;
+      serversConsulted.push(getShareFriendlyName(searchRoot));
 
       const variantes = [
         path.join(ano, String(parseInt(mes, 10)), String(parseInt(dia, 10))),
@@ -178,7 +181,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
         if (readError && isNetworkError(readError) && !externalSignal?.aborted) {
           clearTimeout(dayTimer);
           log.error(`[scanDayDir] Falha de rede ao ler "${fullPath}": ${readError.message}`);
-          return { erro: readError.message };
+          return { arquivos: null, _meta: { servers: serversConsulted }, erro: readError.message };
         }
 
         if (nivel0.length > 0) {
@@ -205,7 +208,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
               if (isNetworkError(err)) {
                 clearTimeout(dayTimer);
                 log.error(`[streaming] Falha de rede ao abrir "${hourDir}": ${err.message}`);
-                return { erro: err.message };
+                return { arquivos: null, _meta: { servers: serversConsulted }, erro: err.message };
               }
               log.warn(`[streaming] Falha ao abrir "${hourDir}": ${err.message}`);
               continue;
@@ -257,12 +260,12 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
 
       if (externalSignal?.aborted) {
         log.warn('Busca local interrompida (conexão perdida).');
-        return { erro: 'conexão perdida' };
+        return { arquivos: null, _meta: { servers: serversConsulted }, erro: 'conexão perdida' };
       }
 
       if (resultado) {
         log.section('Busca local finalizada com sucesso');
-        return resultado;
+        return { arquivos: resultado, _meta: { servers: serversConsulted } };
       }
     }
   }
@@ -270,10 +273,10 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger
   if (!algumCaminhoAcessivel) {
     log.error('Nenhum caminho de busca local está acessível.');
     log.section('Busca local finalizada com erro');
-    return { erro: 'Nenhum caminho de rede acessivel' };
+    return { arquivos: null, _meta: { servers: serversConsulted }, erro: 'Nenhum caminho de rede acessivel' };
   }
 
   log.info('Nenhum arquivo correspondente encontrado localmente.');
   log.section('Busca local finalizada');
-  return null;
+  return { arquivos: null, _meta: { servers: serversConsulted } };
 }

@@ -149,7 +149,10 @@ export const authPaths = {
           description: 'Logout realizado',
           content: {
             'application/json': {
-              schema: { type: 'object', properties: { message: { type: 'string', example: 'logout ok' } } },
+              schema: {
+                type: 'object',
+                properties: { message: { type: 'string', example: 'Logout realizado com sucesso!' } },
+              },
             },
           },
         },

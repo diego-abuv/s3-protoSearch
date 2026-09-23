@@ -30,6 +30,18 @@ vi.mock('../../src/db/sqlite.js', () => ({
   logAudit: vi.fn(),
 }));
 
+vi.mock('../../src/utils/logger.js', () => ({
+  systemLog: { info: vi.fn(), error: vi.fn(), success: vi.fn(), warn: vi.fn(), section: vi.fn(), destaque: vi.fn() },
+  createContextLogger: vi.fn(() => ({
+    info: vi.fn(),
+    error: vi.fn(),
+    success: vi.fn(),
+    warn: vi.fn(),
+    section: vi.fn(),
+    destaque: vi.fn(),
+  })),
+}));
+
 import { createApp } from '../../src/app.js';
 
 describe('Auth Routes', () => {
@@ -140,8 +152,15 @@ describe('Auth Routes', () => {
     });
 
     it('retorna 401 para credenciais invalidas', async () => {
+      sqlite.get.mockReturnValue(undefined);
       const res = await request(app).post('/login').send({ username: 'nonexistent', password: 'Abcd1234@xyz' });
       expect(res.status).toBe(401);
+      expect(sqlite.logAudit).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'login', username: 'nonexistent', details: 'success=false, reason=invalid_credentials' }),
+      );
+      const loggerMod = await import('../../src/utils/logger.js');
+      const ctxLogger = loggerMod.createContextLogger.mock.results[0].value;
+      expect(ctxLogger.info).toHaveBeenCalledWith(expect.stringContaining('Login falhou'));
     });
 
     it('retorna 200 com access_token no login valido', async () => {
@@ -156,6 +175,12 @@ describe('Auth Routes', () => {
       expect(res.body.access_token).toBeDefined();
       expect(typeof res.body.access_token).toBe('string');
       expect(res.body.expires_in).toBe(900);
+      expect(sqlite.logAudit).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'login', username: 'logintest', details: 'success=true' }),
+      );
+      const loggerMod = await import('../../src/utils/logger.js');
+      const ctxLogger = loggerMod.createContextLogger.mock.results[0].value;
+      expect(ctxLogger.info).toHaveBeenCalledWith(expect.stringContaining('Login realizado com sucesso'));
     });
 
     it('define cookie refresh_token no login', async () => {
@@ -182,6 +207,12 @@ describe('Auth Routes', () => {
       const res = await request(app).post('/login').send({ username: 'blockeduser', password: 'pass' });
       expect(res.status).toBe(403);
       expect(res.body.error).toContain('bloqueada');
+      expect(sqlite.logAudit).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'login', username: 'blockeduser', details: 'success=false, reason=account_blocked' }),
+      );
+      const loggerMod = await import('../../src/utils/logger.js');
+      const ctxLogger = loggerMod.createContextLogger.mock.results[0].value;
+      expect(ctxLogger.info).toHaveBeenCalledWith(expect.stringContaining('Login bloqueado'));
     });
 
     it('retorna 200 quando usuario nao esta bloqueado', async () => {
@@ -251,7 +282,10 @@ describe('Auth Routes', () => {
       });
       const res = await request(app).post('/logout').set('Authorization', `Bearer ${token}`);
       expect(res.status).toBe(200);
-      expect(res.body.message).toBe('logout ok');
+      expect(res.body.message).toBe('Logout realizado com sucesso!');
+      const loggerMod = await import('../../src/utils/logger.js');
+      const ctxLogger = loggerMod.createContextLogger.mock.results[0].value;
+      expect(ctxLogger.info).toHaveBeenCalledWith(expect.stringContaining('Logout realizado com sucesso'));
     });
 
     it('revoga refresh token no logout', async () => {

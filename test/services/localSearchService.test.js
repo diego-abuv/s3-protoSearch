@@ -54,7 +54,7 @@ describe('findFileAndGetSignedUrl', () => {
 
   it('retorna null quando ano nao tem configuracao', async () => {
     const result = await findFileAndGetSignedUrl('1900/01/02', 'protocolo');
-    expect(result).toBeNull();
+    expect(result.arquivos).toBeNull();
   });
 
   it('retorna erro quando todos caminhos inacessiveis', async () => {
@@ -62,7 +62,7 @@ describe('findFileAndGetSignedUrl', () => {
 
     const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, 'protocolo');
 
-    expect(result).toEqual({ erro: 'Nenhum caminho de rede acessivel' });
+    expect(result).toEqual({ arquivos: null, _meta: { servers: [] }, erro: 'Nenhum caminho de rede acessivel' });
   });
 
   it('retorna resultado quando varredura nivel 0 encontra arquivo solto na raiz do dia', async () => {
@@ -74,10 +74,11 @@ describe('findFileAndGetSignedUrl', () => {
 
     const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
 
-    expect(Array.isArray(result)).toBe(true);
-    if (result.length > 0) {
-      expect(result[0].downloadUrl).toContain('/download-local?file=');
-      expect(result[0].nomeParaDownload).toBeTruthy();
+    expect(result.arquivos).toBeDefined();
+    expect(Array.isArray(result.arquivos)).toBe(true);
+    if (result.arquivos.length > 0) {
+      expect(result.arquivos[0].downloadUrl).toContain('/download-local?file=');
+      expect(result.arquivos[0].nomeParaDownload).toBeTruthy();
     }
   });
 
@@ -100,7 +101,7 @@ describe('findFileAndGetSignedUrl', () => {
 
     const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
 
-    expect(result).toBeNull();
+    expect(result.arquivos).toBeNull();
   });
 
   it('streaming scan encontra matches e retorna resultados', async () => {
@@ -118,9 +119,10 @@ describe('findFileAndGetSignedUrl', () => {
 
     const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
 
-    expect(Array.isArray(result)).toBe(true);
-    if (result.length > 0) {
-      expect(result[0].downloadUrl).toContain('/download-local?file=');
+    expect(result.arquivos).toBeDefined();
+    expect(Array.isArray(result.arquivos)).toBe(true);
+    if (result.arquivos.length > 0) {
+      expect(result.arquivos[0].downloadUrl).toContain('/download-local?file=');
     }
   });
 
@@ -134,7 +136,7 @@ describe('findFileAndGetSignedUrl', () => {
 
     const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
 
-    expect(result).toBeNull();
+    expect(result.arquivos).toBeNull();
   }, 15000);
 
   it('retorna erro quando opendir de hora falha com EHOSTDOWN', async () => {
@@ -147,7 +149,7 @@ describe('findFileAndGetSignedUrl', () => {
 
     const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
 
-    expect(result).toEqual({ erro: 'EHOSTDOWN: host is down, opendir /mnt/share/1999/1/2/9' });
+    expect(result).toEqual({ arquivos: null, _meta: { servers: ['Servidor'] }, erro: 'EHOSTDOWN: host is down, opendir /mnt/share/1999/1/2/9' });
   });
 
   it('retorna erro quando readdir do dia falha com EHOSTDOWN', async () => {
@@ -157,7 +159,7 @@ describe('findFileAndGetSignedUrl', () => {
 
     const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
 
-    expect(result).toEqual({ erro: 'EHOSTDOWN: host is down, readdir /mnt/share/1999/1/2' });
+    expect(result).toEqual({ arquivos: null, _meta: { servers: ['Servidor'] }, erro: 'EHOSTDOWN: host is down, readdir /mnt/share/1999/1/2' });
   });
 
   it('busca com signal abortado retorna null', async () => {
@@ -169,6 +171,6 @@ describe('findFileAndGetSignedUrl', () => {
 
     const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, 'protocolo', undefined, abortController.signal);
 
-    expect(result).toBeNull();
+    expect(result.arquivos).toBeNull();
   });
 });

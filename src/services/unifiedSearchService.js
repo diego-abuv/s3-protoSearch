@@ -1,7 +1,7 @@
 import { findFileAndGetSignedUrl as findInS3 } from './s3SearchService.js';
 import { findFileAndGetSignedUrl as findLocally } from './localSearchService.js';
 import { translateError } from '../utils/errorCodes.js';
-import { logger } from '../utils/logger.js';
+import { systemLog } from '../utils/logger.js';
 import { cacheGet, cacheSet } from '../utils/cache.js';
 
 const GLOBAL_TIMEOUT_MS = 1_800_000;
@@ -31,13 +31,13 @@ function releaseLocalSearchSlot() {
   }
 }
 
-export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = logger, onProgress, externalSignal) {
+export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = systemLog, onProgress, externalSignal) {
   const cacheKey = `busca:${pasta}:${nomeProtocolo}`;
   const cached = await cacheGet(cacheKey);
   if (cached) {
     log.info('Cache hit busca unificada');
     onProgress?.({ type: 'cache_hit', message: 'Resultado encontrado no cache' });
-    return cached;
+    return { ...cached, _meta: { ...(cached._meta || {}), cache: true } };
   }
 
   if (activeSearches.has(cacheKey)) {
@@ -76,23 +76,35 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey, externa
 
   let s3Status;
   let localStatus = 'nao_consultado';
+  const mergedMeta = { cache: false };
 
   try {
     log.info('1. Tentando busca no S3...');
     onProgress?.({ type: 's3_start', message: 'Buscando no S3 (nuvem)...' });
     const tS3 = Date.now();
     try {
-      const s3Result = await findInS3(pasta, nomeProtocolo, log);
-      log.info(`   [TIMING] S3 retornou em ${((Date.now() - tS3) / 1000).toFixed(2)}s`);
-      if (s3Result) {
+      const s3Response = await findInS3(pasta, nomeProtocolo, log);
+      const s3Timing = ((Date.now() - tS3) / 1000).toFixed(2);
+      log.info(`   [TIMING] S3 retornou em ${s3Timing}s`);
+      Object.assign(mergedMeta, s3Response?._meta || {}, { tempo_s3: `${s3Timing}s` });
+
+      if (s3Response?.arquivos) {
         if (globalSignal.aborted) {
           s3Status = 'cancelado';
         } else {
           log.success('Arquivo(os) encontrado(os) no S3.');
           onProgress?.({ type: 's3_done', message: 'S3: concluído' });
           log.section(`BUSCA FINALIZADA (${((Date.now() - inicio) / 1000).toFixed(2)}s)`);
-          const s3ResultObj = { arquivos: s3Result, status: { s3: 'ok', local: localStatus } };
-          await cacheSet(cacheKey, s3ResultObj, FOUND_CACHE_TTL);
+          const s3ResultObj = {
+            arquivos: s3Response.arquivos,
+            status: { s3: 'ok', local: localStatus },
+            _meta: mergedMeta,
+          };
+          await cacheSet(
+            cacheKey,
+            { arquivos: s3ResultObj.arquivos, status: s3ResultObj.status, _meta: mergedMeta },
+            FOUND_CACHE_TTL,
+          );
           return s3ResultObj;
         }
       } else {
@@ -103,44 +115,66 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey, externa
     } catch (err) {
       log.error(`S3 indisponível ou falha de conexão: ${translateError(err.message)}`);
       log.error('Erro original S3:', err);
-      log.info(`   [TIMING] S3 falhou em ${((Date.now() - tS3) / 1000).toFixed(2)}s`);
+      const s3Timing = ((Date.now() - tS3) / 1000).toFixed(2);
+      log.info(`   [TIMING] S3 falhou em ${s3Timing}s`);
       onProgress?.({ type: 's3_done', message: 'S3: concluído (falha)' });
       s3Status = `erro: ${translateError(err.message)}`;
+      mergedMeta.tempo_s3 = `${s3Timing}s`;
     }
 
     log.info('2. Tentando busca local (fallback)...');
     onProgress?.({ type: 'local_start', message: 'Escaneando servidores locais...' });
+    const tLocal = Date.now();
     try {
       await acquireLocalSearchSlot();
-      let localResult;
+      let localResponse;
       try {
-        localResult = await findLocally(pasta, nomeProtocolo, log, globalSignal, onProgress);
+        localResponse = await findLocally(pasta, nomeProtocolo, log, globalSignal, onProgress);
       } finally {
         releaseLocalSearchSlot();
       }
 
-      if (Array.isArray(localResult)) {
-        if (localResult.length > 0) {
+      const localTiming = ((Date.now() - tLocal) / 1000).toFixed(2);
+      log.info(`   [TIMING] Local retornou em ${localTiming}s`);
+      mergedMeta.tempo_local = `${localTiming}s`;
+
+      const localFiles = localResponse?.arquivos;
+      const localMeta = localResponse?._meta || {};
+      Object.assign(mergedMeta, { servers: localMeta.servers || [] });
+
+      if (Array.isArray(localFiles)) {
+        if (localFiles.length > 0) {
           if (globalSignal.aborted) {
             log.warn('Arquivo(s) encontrado(s) localmente, mas a busca foi cancelada.');
           } else {
-            log.success(`Arquivo(os) encontrado(os) localmente (${localResult.length}).`);
+            log.success(`Arquivo(os) encontrado(os) localmente (${localFiles.length}).`);
             log.section(`BUSCA FINALIZADA (${((Date.now() - inicio) / 1000).toFixed(2)}s)`);
-            const localResultObj = { arquivos: localResult, status: { s3: s3Status, local: 'ok' } };
-            await cacheSet(cacheKey, localResultObj, FOUND_CACHE_TTL);
+            const localResultObj = {
+              arquivos: localFiles,
+              status: { s3: s3Status, local: 'ok' },
+              _meta: mergedMeta,
+            };
+            await cacheSet(
+              cacheKey,
+              { arquivos: localResultObj.arquivos, status: localResultObj.status, _meta: mergedMeta },
+              FOUND_CACHE_TTL,
+            );
             return localResultObj;
           }
         } else {
           log.info('Local: Nenhum arquivo encontrado.');
           localStatus = 'nao_encontrado';
         }
-      } else if (localResult && localResult.erro) {
-        log.error(`Busca local impossibilitada: ${translateError(localResult.erro)}`);
-        localStatus = `erro: ${translateError(localResult.erro)}`;
+      } else if (localResponse?.erro) {
+        log.error(`Busca local impossibilitada: ${translateError(localResponse.erro)}`);
+        localStatus = `erro: ${translateError(localResponse.erro)}`;
       } else {
         localStatus = 'nao_encontrado';
       }
     } catch (err) {
+      const localTiming = ((Date.now() - tLocal) / 1000).toFixed(2);
+      log.info(`   [TIMING] Local falhou em ${localTiming}s`);
+      mergedMeta.tempo_local = `${localTiming}s`;
       log.error(`Busca local falhou: ${translateError(err.message)}`);
       localStatus = `erro: ${translateError(err.message)}`;
     }
@@ -163,8 +197,10 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey, externa
     const nullResult = {
       arquivos: null,
       status: { s3: s3Status, local: localStatus, ...(cancelado ? { cancelado: true } : {}) },
+      _meta: mergedMeta,
     };
-    if (!cancelado) await cacheSet(cacheKey, nullResult, NULL_CACHE_TTL);
+    if (!cancelado)
+      await cacheSet(cacheKey, { arquivos: null, status: nullResult.status, _meta: nullResult._meta }, NULL_CACHE_TTL);
     return nullResult;
   } finally {
     clearTimeout(globalTimer);

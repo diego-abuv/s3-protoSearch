@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit';
 import crypto from 'node:crypto';
 import { authMiddleware, hasActiveSession } from '../middleware/auth.js';
 import { sanitizeError } from '../utils/errorCodes.js';
-import { logger, createContextLogger } from '../utils/logger.js';
+import { createContextLogger } from '../utils/logger.js';
 import { logAudit } from '../db/sqlite.js';
 
 const searchTokens = new Map();
@@ -152,16 +152,27 @@ export function createSearchRoutes(searchableService, { heartbeatMs = 20_000 } =
         });
       }
 
-      const found = resultado.arquivos && resultado.arquivos.length > 0;
+      const meta = resultado._meta || {};
+      const found = Boolean(resultado.arquivos && resultado.arquivos.length > 0);
       const count = resultado.arquivos?.length || 0;
       const wasInterrupted = resultado.status?.local?.startsWith('erro:') || resultado.status?.s3?.startsWith('erro:');
       const cancelado = Boolean(resultado.status?.cancelado);
       let interrupcao = '';
       if (cancelado) interrupcao = cancelledByUser ? ', cancelado=1' : ', interrompida=true';
       else if (wasInterrupted) interrupcao = ', interrompida=true';
+
+      const metaParts = [];
+      if (meta.bucket) metaParts.push(`bucket=${meta.bucket}`);
+      if (meta.prefixes?.length) metaParts.push(`prefixos=${meta.prefixes.join(';')}`);
+      if (meta.servers?.length) metaParts.push(`servers=${meta.servers.join(';')}`);
+      if (meta.tempo_s3) metaParts.push(`tempo_s3=${meta.tempo_s3}`);
+      if (meta.tempo_local) metaParts.push(`tempo_local=${meta.tempo_local}`);
+      if (meta.cache !== undefined) metaParts.push(`cache=${meta.cache}`);
+
       const details =
         `encontrados=${count}, tempo=${elapsed}s, s3=${resultado.status.s3}, local=${resultado.status.local}` +
-        interrupcao;
+        interrupcao +
+        (metaParts.length ? ', ' + metaParts.join(', ') : '');
 
       logAudit({
         user_id: req.user.id,
@@ -172,14 +183,14 @@ export function createSearchRoutes(searchableService, { heartbeatMs = 20_000 } =
         ip: req.ip,
       });
 
+      const responsePayload = {
+        encontrado: found,
+        arquivos: resultado.arquivos,
+        status: resultado.status,
+      };
+
       if (wantsSSE) {
-        res.write(
-          `event: result\ndata: ${JSON.stringify({
-            encontrado: found,
-            arquivos: resultado.arquivos,
-            status: resultado.status,
-          })}\n\n`,
-        );
+        res.write(`event: result\ndata: ${JSON.stringify(responsePayload)}\n\n`);
         res.searchMeta = { encontrado: found, count, status: resultado.status };
         res.end();
         return;
@@ -187,21 +198,13 @@ export function createSearchRoutes(searchableService, { heartbeatMs = 20_000 } =
 
       if (found) {
         res.searchMeta = { encontrado: true, count, status: resultado.status };
-        return res.status(200).json({
-          encontrado: true,
-          arquivos: resultado.arquivos,
-          status: resultado.status,
-        });
+        return res.status(200).json(responsePayload);
       }
 
       res.searchMeta = { encontrado: false, status: resultado.status };
-      return res.status(404).json({
-        encontrado: false,
-        arquivos: null,
-        status: resultado.status,
-      });
+      return res.status(404).json({ ...responsePayload, arquivos: null });
     } catch (err) {
-      logger.error('Erro não tratado na rota de busca:', err);
+      ctxLogger.error('Erro não tratado na rota de busca:', err);
       logAudit({
         user_id: req.user.id,
         username: req.user.username,

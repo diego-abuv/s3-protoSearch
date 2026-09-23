@@ -821,7 +821,21 @@ document.getElementById('auditTableBody').addEventListener('click', (e) => {
     document.getElementById('ad-encontrados').textContent =
       encontrados !== null ? encontrados : erro ? `Erro: ${erro}` : '-';
 
+    const tempoS3 = parseField('tempo_s3');
+    const tempoLocal = parseField('tempo_local');
+    document.getElementById('ad-tempo-s3').textContent = tempoS3 ? formatDuration(tempoS3) : '-';
+    document.getElementById('ad-tempo-local').textContent = tempoLocal ? formatDuration(tempoLocal) : '-';
+
+    const bucket = parseField('bucket');
+    const prefixos = parseField('prefixos');
+    const cache = parseField('cache');
+    document.getElementById('ad-bucket').textContent = bucket || '-';
+    document.getElementById('ad-prefixos').textContent = prefixos ? prefixos.split(';').join(', ') : '-';
+    document.getElementById('ad-cache').textContent = cache === 'true' ? 'Sim (cache hit)' : cache === 'false' ? 'Nao (busca fresca)' : '-';
+
     const sv = document.getElementById('ad-servidores');
+    const servers = parseField('servers');
+    const serverNames = servers ? servers.split(';') : [];
     if (s3 || local) {
       const statusClass = (v) => {
         if (!v || v === 'nao_consultado' || v === 'cancelado') return 'skip';
@@ -829,22 +843,51 @@ document.getElementById('auditTableBody').addEventListener('click', (e) => {
         if (v === 'nao_encontrado') return 'miss';
         return 'err';
       };
-      sv.innerHTML = `
+      let html = `
         <div class="d-flex align-items-center gap-2 mb-1">
           <span class="step-dot ${statusClass(s3)}"></span>
           <span><strong>S3:</strong> ${escapeHtml(s3 || 'nao consultado')}</span>
         </div>
-        <div class="d-flex align-items-center gap-2">
+        <div class="d-flex align-items-center gap-2 mb-1">
           <span class="step-dot ${statusClass(local)}"></span>
           <span><strong>Local:</strong> ${escapeHtml(local || 'nao consultado')}</span>
         </div>
       `;
+      if (serverNames.length > 0) {
+        html += `<div class="small text-secondary mt-1">Servidores: ${serverNames.map(escapeHtml).join(', ')}</div>`;
+      }
+      sv.innerHTML = html;
     } else {
       sv.innerHTML = '<span class="text-secondary">-</span>';
     }
   } else {
     document.getElementById('ad-alvo').textContent = log.target || '-';
-    document.getElementById('ad-detalhes').textContent = log.details || '-';
+
+    const detalhesEl = document.getElementById('ad-detalhes');
+    if (log.details) {
+      const tokens = log.details.split(',').map((s) => s.trim()).filter(Boolean);
+      const parts = [];
+      for (const token of tokens) {
+        if (token.includes('=')) {
+          parts.push(token);
+        } else if (parts.length > 0) {
+          parts[parts.length - 1] += ',' + token;
+        } else {
+          parts.push(token);
+        }
+      }
+      detalhesEl.innerHTML = parts
+        .map((p) => {
+          const eq = p.indexOf('=');
+          if (eq === -1) return `<div>${escapeHtml(p)}</div>`;
+          const key = p.slice(0, eq).trim();
+          const val = p.slice(eq + 1).trim();
+          return `<div><strong>${escapeHtml(key)}:</strong> ${escapeHtml(val)}</div>`;
+        })
+        .join('');
+    } else {
+      detalhesEl.textContent = '-';
+    }
   }
 
   new bootstrap.Modal(document.getElementById('modalAuditDetail')).show();
