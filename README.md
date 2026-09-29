@@ -190,6 +190,7 @@ AWS_ACCESS_KEY_ID=SUA_ACCESS_KEY
 AWS_SECRET_ACCESS_KEY=SEU_SECRET_KEY
 AWS_BUCKET_NAME=nome-do-bucket
 AWS_REGION=sa-east-1
+AWS_PREFIX_ROOTS=,audio
 
 # Busca Local 
 PATH_X5=/sharepoint/backupligacoes
@@ -197,6 +198,8 @@ YEARS_X5=2021,2022,2023,2024
 
 PATH_Z2=/sharepoint/share,subfolder1;subfolder2
 YEARS_Z2=2019,2020,2021
+
+SERVER_NAMES=192-168-0-254:AD-MBE,192-168-16-74:STORAGE
 
 # Segurança
 JWT_SECRET=minha-chave-super-secreta
@@ -213,14 +216,16 @@ ADMIN_KEY=chave-para-criar-usuarios
 | `PUBLIC_PROTOCOL` | Não | Protocolo público (`http`/`https`), exibido no log |
 | `PUBLIC_HOST` | Não | Host público (IP ou DNS), exibido no log |
 | `AWS_*` | Sim | Credenciais + bucket + região |
+| `AWS_PREFIX_ROOTS` | Não | Raízes candidatas dentro do bucket, testadas em paralelo (lista separada por vírgula; item vazio = raiz do bucket). Omitido = busca só na raiz |
 | `PATH_<ID>` | Condicional | Caminho base + subpastas (após vírgula) |
 | `YEARS_<ID>` | Condicional | Anos associados ao `PATH_<ID>` |
+| `SERVER_NAMES` | Não | Nomes amigáveis por IP de servidor exibidos em logs (`ip:nome`, separados por vírgula). IP não mapeado cai no fallback `Servidor <ip>` |
 | `JWT_SECRET` | Sim | Chave para assinar tokens JWT (sem fallback) |
 | `API_KEY` | Sim | Chave de API para integração n8n |
 | `ADMIN_KEY` | Sim | Chave mestra para criar usuários admin |
 | `REDIS_URL` | Não | URL do Redis (ex: `redis://redis:6379`). Cache opcional — fallback silencioso se não configurado |
 
-O sistema testa 4 variações de data (`YYYY/M/D`, `YYYY/M/DD`, `YYYY/MM/DD`, `YYYY/MM/D`) em paralelo com `AbortController` — ao encontrar, os demais são abortados.
+O sistema testa 4 variações de data (`YYYY/M/D`, `YYYY/M/DD`, `YYYY/MM/DD`, `YYYY/MM/D`) para cada raiz configurada em `AWS_PREFIX_ROOTS`, todas em paralelo com `AbortController` — ao encontrar, os demais são abortados.
 
 ---
 

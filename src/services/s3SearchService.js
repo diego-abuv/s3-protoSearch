@@ -25,6 +25,21 @@ const s3Client = new S3Client({
 const rawBucketName = process.env.AWS_BUCKET_NAME || '';
 const bucketName = rawBucketName.replace(/s3:\/\/|\//g, '');
 
+// Raízes candidatas do bucket, testadas em paralelo — cobre migrações de estrutura (ex: "audio/")
+// que começaram no meio do ano, quando o mesmo ano tem arquivos na raiz e na subpasta nova.
+function getBucketRootPrefixes() {
+  const raw = process.env.AWS_PREFIX_ROOTS;
+  if (raw === undefined) return [''];
+
+  const roots = raw.split(',').map(normalizeRootPrefix);
+  return roots.length > 0 ? [...new Set(roots)] : [''];
+}
+
+function normalizeRootPrefix(prefix) {
+  const trimmed = (prefix || '').trim().replace(/^\/+|\/+$/g, '');
+  return trimmed ? `${trimmed}/` : '';
+}
+
 export function generatePrefixes(ano, mes, dia) {
   const m = Number(mes);
   const d = Number(dia);
@@ -32,7 +47,11 @@ export function generatePrefixes(ano, mes, dia) {
   const m2 = String(m).padStart(2, '0');
   const d2 = String(d).padStart(2, '0');
 
-  return [...new Set([`${ano}/${m}/${d}/`, `${ano}/${m}/${d2}/`, `${ano}/${m2}/${d2}/`, `${ano}/${m2}/${d}/`])];
+  const raizes = getBucketRootPrefixes();
+  const datas = [`${ano}/${m}/${d}/`, `${ano}/${m}/${d2}/`, `${ano}/${m2}/${d2}/`, `${ano}/${m2}/${d}/`];
+
+  const prefixos = raizes.flatMap((raiz) => datas.map((data) => `${raiz}${data}`));
+  return [...new Set(prefixos)];
 }
 
 async function fetchS3Listing(prefixo, signal, log) {

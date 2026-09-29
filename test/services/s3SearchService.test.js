@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 
 vi.hoisted(() => {
   process.env.REDIS_URL = 'redis://localhost:6379';
@@ -34,6 +34,13 @@ describe('generatePrefixes', () => {
     generatePrefixes = mod.generatePrefixes;
   });
 
+  // Isola os testes do AWS_PREFIX_ROOTS real do .env do projeto (carregado via dotenv/config) —
+  // os testes abaixo assumem o comportamento padrão (sem prefixo raiz) a menos que configurem
+  // a variável explicitamente.
+  beforeEach(() => {
+    delete process.env.AWS_PREFIX_ROOTS;
+  });
+
   it('retorna 4 prefixos para mes/dia sem padding', () => {
     const result = generatePrefixes('2025', '1', '1');
     expect(result).toEqual(['2025/1/1/', '2025/1/01/', '2025/01/01/', '2025/01/1/']);
@@ -60,6 +67,54 @@ describe('generatePrefixes', () => {
     expect(result).not.toContain('2025/1/1/');
     expect(result).toHaveLength(2);
   });
+
+  describe('prefixo raiz configuravel (AWS_PREFIX_ROOTS)', () => {
+    afterEach(() => {
+      delete process.env.AWS_PREFIX_ROOTS;
+    });
+
+    it('sem AWS_PREFIX_ROOTS, busca apenas na raiz do bucket (comportamento atual)', () => {
+      const result = generatePrefixes('2025', '1', '1');
+
+      expect(result).toEqual(['2025/1/1/', '2025/1/01/', '2025/01/01/', '2025/01/1/']);
+    });
+
+    it('com AWS_PREFIX_ROOTS=,audio testa raiz e subpasta para o mesmo ano', () => {
+      process.env.AWS_PREFIX_ROOTS = ',audio';
+
+      const result = generatePrefixes('2025', '10', '27');
+
+      expect(result).toContain('2025/10/27/');
+      expect(result).toContain('audio/2025/10/27/');
+      expect(result).toHaveLength(2); // mes e dia ja tem 2 digitos, sem variantes de padding x 2 raizes
+    });
+
+    it('busca somente na subpasta quando AWS_PREFIX_ROOTS nao inclui item vazio', () => {
+      process.env.AWS_PREFIX_ROOTS = 'audio';
+
+      const result = generatePrefixes('2026', '4', '1');
+
+      expect(result.every((p) => p.startsWith('audio/'))).toBe(true);
+      expect(result).not.toContain('2026/4/1/');
+    });
+
+    it('normaliza barras extras e espacos em cada raiz da lista', () => {
+      process.env.AWS_PREFIX_ROOTS = ' /audio/ , /hmb ';
+
+      const result = generatePrefixes('2025', '1', '1');
+
+      expect(result).toContain('audio/2025/1/1/');
+      expect(result).toContain('hmb/2025/1/1/');
+    });
+
+    it('deduplica raizes repetidas na lista', () => {
+      process.env.AWS_PREFIX_ROOTS = 'audio,audio,/audio/';
+
+      const result = generatePrefixes('2025', '1', '1');
+
+      expect(result.filter((p) => p === 'audio/2025/1/1/')).toHaveLength(1);
+    });
+  });
 });
 
 describe('findFileAndGetSignedUrl', () => {
@@ -71,6 +126,7 @@ describe('findFileAndGetSignedUrl', () => {
   });
 
   beforeEach(() => {
+    delete process.env.AWS_PREFIX_ROOTS;
     mockSend.mockReset();
     ListObjectsV2Command.mockClear();
     cacheGet.mockReset();
