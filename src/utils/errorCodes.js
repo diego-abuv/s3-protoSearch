@@ -3,25 +3,31 @@ export function translateError(message) {
 
   const lower = message.toLowerCase();
 
-  if (lower.includes('timeout') || lower.includes('timed out')) {
-    return 'A requisição excedeu o tempo limite. Tente novamente.';
-  }
-
-  if (lower.includes('accessdenied') || lower.includes('access denied')) {
-    return 'Acesso negado. Verifique as permissões.';
-  }
-
-  if (lower.includes('network') || lower.includes('econnrefused') || lower.includes('enotfound')) {
-    return 'Erro de rede. Verifique sua conexão.';
-  }
-
   if (
     lower.includes('ehostdown') ||
     lower.includes('host is down') ||
     lower.includes('ehostunreach') ||
-    lower.includes('host unreachable')
+    lower.includes('host unreachable') ||
+    lower.includes('share indisponivel')
   ) {
     return 'Servidor de rede indisponível. Tente novamente.';
+  }
+
+  if (
+    lower.includes('accessdenied') ||
+    lower.includes('access denied') ||
+    lower.includes('eacces') ||
+    lower.includes('eperm')
+  ) {
+    return 'Acesso negado. Verifique as permissões.';
+  }
+
+  if (lower.includes('timeout') || lower.includes('timed out')) {
+    return 'A requisição excedeu o tempo limite. Tente novamente.';
+  }
+
+  if (lower.includes('network') || lower.includes('econnrefused') || lower.includes('enotfound')) {
+    return 'Erro de rede. Verifique sua conexão.';
   }
 
   if (lower.includes('notfound') || lower.includes('nosuchkey') || lower.includes('no such key')) {

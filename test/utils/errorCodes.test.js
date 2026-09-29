@@ -30,6 +30,32 @@ describe('translateError', () => {
     expect(translateError('enotfound')).toBe('Erro de rede. Verifique sua conexão.');
   });
 
+  it('prefere servidor indisponivel a timeout quando a mensagem combina os dois', () => {
+    expect(translateError('EHOSTDOWN: host is down, readdir ETIMEDOUT')).toBe(
+      'Servidor de rede indisponível. Tente novamente.',
+    );
+  });
+
+  it('retorna mensagem de servidor indisponivel para share indisponivel', () => {
+    expect(translateError('share indisponivel: STORAGE:nao-montado')).toBe(
+      'Servidor de rede indisponível. Tente novamente.',
+    );
+  });
+
+  it('retorna mensagem de acesso negado para EACCES', () => {
+    expect(translateError('EACCES: permission denied, stat /sharepoint/192-168-16-74')).toBe(
+      'Acesso negado. Verifique as permissões.',
+    );
+  });
+
+  it('retorna mensagem de acesso negado para EPERM', () => {
+    expect(translateError('EPERM: operation not permitted')).toBe('Acesso negado. Verifique as permissões.');
+  });
+
+  it('nao confunde EACCES com arquivo nao encontrado', () => {
+    expect(translateError('EACCES: permission denied')).not.toBe('Arquivo não encontrado.');
+  });
+
   it('retorna mensagem de arquivo nao encontrado', () => {
     expect(translateError('NotFound')).toBe('Arquivo não encontrado.');
   });

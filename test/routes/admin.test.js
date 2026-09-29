@@ -317,6 +317,51 @@ describe('Admin Routes', () => {
       expect(res.status).toBe(200);
       expect(res.body.avg_duration_s).toBe(3.3);
     });
+
+    it('calcula success_rate a partir das buscas ok sobre o total de 7 dias', async () => {
+      sqlite.get
+        .mockReturnValueOnce({ token_hash: 'active-session-hash' })
+        .mockReturnValueOnce({ total: 1 })
+        .mockReturnValueOnce({ total: 1 })
+        .mockReturnValueOnce({ total: 1 })
+        .mockReturnValueOnce({ total: 1 })
+        .mockReturnValueOnce({ total: 0 })
+        .mockReturnValueOnce({ total: 4 })
+        .mockReturnValueOnce({ total: 3 })
+        .mockReturnValueOnce({ avg_s: 1 });
+      const res = await request(app).get('/admin/stats').set('Authorization', `Bearer ${makeAdminToken()}`);
+      expect(res.body.success_rate).toBe(75);
+    });
+
+    it('conta buscas nao encontradas como sucesso quando nao ha interrompida=true', async () => {
+      sqlite.get
+        .mockReturnValueOnce({ token_hash: 'active-session-hash' })
+        .mockReturnValueOnce({ total: 1 })
+        .mockReturnValueOnce({ total: 1 })
+        .mockReturnValueOnce({ total: 1 })
+        .mockReturnValueOnce({ total: 1 })
+        .mockReturnValueOnce({ total: 0 })
+        .mockReturnValueOnce({ total: 2 })
+        .mockReturnValueOnce({ total: 2 })
+        .mockReturnValueOnce({ avg_s: 1 });
+      const res = await request(app).get('/admin/stats').set('Authorization', `Bearer ${makeAdminToken()}`);
+      expect(res.body.success_rate).toBe(100);
+    });
+
+    it('retorna success_rate zero quando nao houve buscas no periodo', async () => {
+      sqlite.get
+        .mockReturnValueOnce({ token_hash: 'active-session-hash' })
+        .mockReturnValueOnce({ total: 1 })
+        .mockReturnValueOnce({ total: 1 })
+        .mockReturnValueOnce({ total: 1 })
+        .mockReturnValueOnce({ total: 1 })
+        .mockReturnValueOnce({ total: 0 })
+        .mockReturnValueOnce({ total: 0 })
+        .mockReturnValueOnce({ total: 0 })
+        .mockReturnValueOnce({ avg_s: null });
+      const res = await request(app).get('/admin/stats').set('Authorization', `Bearer ${makeAdminToken()}`);
+      expect(res.body.success_rate).toBe(0);
+    });
   });
 
   describe('PATCH /admin/users/:id/block', () => {

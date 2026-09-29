@@ -4,13 +4,115 @@ import path from 'path';
 import { systemLog } from '../utils/logger.js';
 
 const SCAN_LEVEL0_TIMEOUT_MS = 600_000;
+const FS_PROBE_TIMEOUT_MS = 5000;
+const MOUNTINFO_PATH = '/proc/self/mountinfo';
 
-const NETWORK_ERROR_CODES = new Set(['ehostdown', 'ehostunreach', 'enetdown', 'enetunreach', 'econnreset']);
+const NETWORK_ERROR_CODES = new Set([
+  'ehostdown',
+  'ehostunreach',
+  'enetdown',
+  'enetunreach',
+  'econnreset',
+  'ebusy',
+  'enotconn',
+  'estale',
+  'eio',
+  'etimedout',
+  'unknown',
+]);
 
 function isNetworkError(err) {
   if (!err || err.name === 'AbortError') return false;
   const code = String(err.code || '').toLowerCase();
   return NETWORK_ERROR_CODES.has(code) || /host is down|host unreachable/i.test(err.message || '');
+}
+
+function makeTimeoutError() {
+  const err = new Error(`timeout apos ${FS_PROBE_TIMEOUT_MS}ms`);
+  err.code = 'ETIMEDOUT';
+  return err;
+}
+
+async function probeFilesystem(fn) {
+  let timer;
+  try {
+    return await Promise.race([
+      fn(),
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(makeTimeoutError()), FS_PROBE_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function unescapeMountPoint(value) {
+  return value.replace(/\\([0-7]{3})/g, (_, octal) => String.fromCharCode(parseInt(octal, 8)));
+}
+
+function parseMountPoints(content) {
+  const points = [];
+  for (const line of content.split('\n')) {
+    const fields = line.trim().split(/\s+/);
+    if (fields.length < 5) continue;
+    points.push(unescapeMountPoint(fields[4]));
+  }
+  return points;
+}
+
+function resolveMountState(target, mountPoints) {
+  const normalized = target.replace(/\/+$/, '') || '/';
+  if (normalized === '/') return true;
+  if (mountPoints.includes(normalized)) return true;
+  const hasAncestor = mountPoints.some((point) => normalized.startsWith(point === '/' ? '/' : `${point}/`));
+  return hasAncestor ? false : null;
+}
+
+async function readMountPoints() {
+  try {
+    return parseMountPoints(await probeFilesystem(() => fs.readFile(MOUNTINFO_PATH, 'utf8')));
+  } catch {
+    return null;
+  }
+}
+
+async function verifyShares(shareStates, log) {
+  const healthy = [...shareStates.entries()].filter(([, share]) => share.status === 'ok');
+  if (healthy.length === 0) return;
+
+  const mountPoints = await readMountPoints();
+
+  for (const [searchRoot, share] of healthy) {
+    if (mountPoints) {
+      const mountState = resolveMountState(searchRoot, mountPoints);
+      if (mountState === true) continue;
+      if (mountState === false) {
+        share.status = 'nao-montado';
+        log.warn(`Share "${searchRoot}" nao esta montado neste container: o submount nao propagou.`);
+        continue;
+      }
+    }
+
+    try {
+      const entries = await probeFilesystem(() => fs.readdir(searchRoot));
+      if (entries.length === 0) {
+        share.status = 'vazio';
+        log.warn(`Share "${searchRoot}" esta acessivel mas a raiz esta vazia.`);
+      }
+    } catch (err) {
+      if (isNetworkError(err)) {
+        share.status = 'rede';
+        log.warn(`Falha de rede ao listar a raiz do share "${searchRoot}": ${err.message}`);
+      }
+    }
+  }
+}
+
+function listSharesIndisponiveis(shareStates) {
+  return [...shareStates.values()]
+    .filter((share) => share.status !== 'ok')
+    .map((share) => `${share.nome}:${share.status}`);
 }
 
 function getPathConfigsForYear(anoBusca) {
@@ -105,6 +207,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = system
   }
 
   let algumCaminhoAcessivel = false;
+  const shareStates = new Map();
 
   for (const pathConfig of pathConfigs) {
     for (const searchRoot of pathConfig.searchRoots) {
@@ -113,18 +216,24 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = system
         break;
       }
 
+      const friendlyName = getShareFriendlyName(searchRoot);
+
       try {
-        await Promise.race([
-          fs.access(searchRoot),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
-        ]);
-      } catch {
-        log.warn(`O caminho de busca "${searchRoot}" não está acessível ou excedeu timeout. Pulando...`);
+        await probeFilesystem(() => fs.access(searchRoot));
+      } catch (err) {
+        shareStates.set(searchRoot, {
+          nome: friendlyName,
+          status: isNetworkError(err) ? 'rede' : 'inacessivel',
+        });
+        log.warn(
+          `O caminho de busca "${searchRoot}" não está acessível ou excedeu timeout [${err.code || 'SEM_CODIGO'}]: ${err.message}. Pulando...`,
+        );
         continue;
       }
 
       algumCaminhoAcessivel = true;
-      serversConsulted.push(getShareFriendlyName(searchRoot));
+      serversConsulted.push(friendlyName);
+      shareStates.set(searchRoot, { nome: friendlyName, status: 'ok' });
 
       const variantes = [
         path.join(ano, String(parseInt(mes, 10)), String(parseInt(dia, 10))),
@@ -149,14 +258,16 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = system
 
         const tStat = performance.now();
         try {
-          await Promise.race([
-            fs.stat(fullPath),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
-          ]);
+          await probeFilesystem(() => fs.stat(fullPath));
           log.info(`   [TIMING] ${prefixo}: OK (${(performance.now() - tStat).toFixed(0)}ms)`);
           acessiveis.push(prefixo);
-        } catch {
-          log.info(`   [TIMING] ${prefixo}: inacessível (${(performance.now() - tStat).toFixed(0)}ms)`);
+        } catch (err) {
+          const codigo = err.code || 'SEM_CODIGO';
+          log.info(`   [TIMING] ${prefixo}: inacessível (${(performance.now() - tStat).toFixed(0)}ms) [${codigo}]`);
+          const share = shareStates.get(searchRoot);
+          if (share && share.status === 'ok' && codigo !== 'ENOENT') {
+            share.status = isNetworkError(err) ? 'rede' : 'erro';
+          }
         }
       }
 
@@ -270,10 +381,28 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = system
     }
   }
 
+  await verifyShares(shareStates, log);
+
+  const sharesIndisponiveis = listSharesIndisponiveis(shareStates);
+
   if (!algumCaminhoAcessivel) {
     log.error('Nenhum caminho de busca local está acessível.');
     log.section('Busca local finalizada com erro');
-    return { arquivos: null, _meta: { servers: serversConsulted }, erro: 'Nenhum caminho de rede acessivel' };
+    return {
+      arquivos: null,
+      _meta: { servers: serversConsulted, sharesIndisponiveis },
+      erro: 'Nenhum caminho de rede acessivel',
+    };
+  }
+
+  if (sharesIndisponiveis.length > 0) {
+    log.error(`Resultado não confiável: share(s) indisponível(is): ${sharesIndisponiveis.join(', ')}`);
+    log.section('Busca local finalizada com erro');
+    return {
+      arquivos: null,
+      _meta: { servers: serversConsulted, sharesIndisponiveis },
+      erro: `share indisponivel: ${sharesIndisponiveis.join(',')}`,
+    };
   }
 
   log.info('Nenhum arquivo correspondente encontrado localmente.');

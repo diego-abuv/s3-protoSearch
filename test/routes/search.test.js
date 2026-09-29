@@ -191,6 +191,79 @@ describe('Search Routes', () => {
       );
     });
 
+    it('audit registra interrompida=true quando o share local esta indisponivel', async () => {
+      mockService.findFileAndGetSignedUrl.mockResolvedValue({
+        arquivos: null,
+        status: { s3: 'nao_encontrado', local: 'erro: Servidor de rede indisponível. Tente novamente.' },
+        _meta: { servers: ['STORAGE'], sharesIndisponiveis: ['STORAGE:nao-montado'] },
+      });
+
+      await request(app)
+        .post('/buscar-arquivo')
+        .set('Authorization', `Bearer ${makeToken()}`)
+        .send({ pasta: '2024/01/02', nomeProtocolo: '12345' });
+
+      expect(sqlite.logAudit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          details: expect.stringContaining('interrompida=true'),
+        }),
+      );
+    });
+
+    it('audit registra quais shares estavam indisponiveis', async () => {
+      mockService.findFileAndGetSignedUrl.mockResolvedValue({
+        arquivos: null,
+        status: { s3: 'nao_encontrado', local: 'erro: Servidor de rede indisponível. Tente novamente.' },
+        _meta: { servers: ['BACKUP', 'STORAGE'], sharesIndisponiveis: ['STORAGE:nao-montado'] },
+      });
+
+      await request(app)
+        .post('/buscar-arquivo')
+        .set('Authorization', `Bearer ${makeToken()}`)
+        .send({ pasta: '2024/01/02', nomeProtocolo: '12345' });
+
+      expect(sqlite.logAudit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          details: expect.stringContaining('shares_indisponiveis=STORAGE:nao-montado'),
+        }),
+      );
+    });
+
+    it('nao registra shares_indisponiveis quando todos os shares responderam', async () => {
+      mockService.findFileAndGetSignedUrl.mockResolvedValue({
+        arquivos: null,
+        status: { s3: 'nao_encontrado', local: 'nao_encontrado' },
+        _meta: { servers: ['BACKUP', 'STORAGE'], sharesIndisponiveis: [] },
+      });
+
+      await request(app)
+        .post('/buscar-arquivo')
+        .set('Authorization', `Bearer ${makeToken()}`)
+        .send({ pasta: '2024/01/02', nomeProtocolo: '12345' });
+
+      expect(sqlite.logAudit).toHaveBeenCalledWith(
+        expect.objectContaining({
+          details: expect.not.stringContaining('shares_indisponiveis'),
+        }),
+      );
+    });
+
+    it('retorna 404 com status de erro quando o share esta indisponivel', async () => {
+      mockService.findFileAndGetSignedUrl.mockResolvedValue({
+        arquivos: null,
+        status: { s3: 'nao_encontrado', local: 'erro: Servidor de rede indisponível. Tente novamente.' },
+        _meta: { servers: ['STORAGE'], sharesIndisponiveis: ['STORAGE:nao-montado'] },
+      });
+
+      const res = await request(app)
+        .post('/buscar-arquivo')
+        .set('Authorization', `Bearer ${makeToken()}`)
+        .send({ pasta: '2024/01/02', nomeProtocolo: '12345' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.status.local).toBe('erro: Servidor de rede indisponível. Tente novamente.');
+    });
+
     it('audit registra interrompida=true sem cancelado=1 quando busca interrompida por desconexao', async () => {
       mockService.findFileAndGetSignedUrl.mockResolvedValue({
         arquivos: null,

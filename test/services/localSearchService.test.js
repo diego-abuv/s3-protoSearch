@@ -5,6 +5,7 @@ const mockFs = vi.hoisted(() => ({
   stat: vi.fn(),
   readdir: vi.fn(),
   opendir: vi.fn(),
+  readFile: vi.fn(),
 }));
 vi.mock('fs/promises', () => {
   return { ...mockFs, default: mockFs };
@@ -23,6 +24,26 @@ function makeMockDir(entries) {
 }
 
 const TEST_YEAR = '1999';
+const TEST_ALT_YEAR = '1998';
+const SEARCH_ROOT = '/mnt/share/sub1';
+
+const MOUNTINFO_SEM_SHARE =
+  '25 0 8:1 / / rw,relatime - ext4 /dev/sda1 rw,relatime\n' + '30 25 8:2 / /mnt rw,relatime - ext4 /dev/sda2 rw\n';
+
+const MOUNTINFO_COM_SHARE =
+  MOUNTINFO_SEM_SHARE + '31 30 0:99 / /mnt/share/sub1 rw,relatime - cifs //server/share rw,relatime\n';
+
+function makeEnoent(op, fullPath) {
+  const err = new Error(`ENOENT: no such file or directory, ${op} '${fullPath}'`);
+  err.code = 'ENOENT';
+  return err;
+}
+
+function makeErrno(code, op, fullPath) {
+  const err = new Error(`${code}: ${op} '${fullPath}'`);
+  err.code = code;
+  return err;
+}
 
 describe('findFileAndGetSignedUrl', () => {
   let findFileAndGetSignedUrl;
@@ -36,6 +57,8 @@ describe('findFileAndGetSignedUrl', () => {
     }
     process.env[`YEARS_TEST`] = TEST_YEAR;
     process.env[`PATH_TEST`] = '/mnt/share,sub1';
+    process.env[`YEARS_TEST_ALT`] = TEST_ALT_YEAR;
+    process.env[`PATH_TEST_ALT`] = '/mnt/alt,shareA;shareB';
     const mod = await import('../../src/services/localSearchService.js');
     findFileAndGetSignedUrl = mod.findFileAndGetSignedUrl;
   });
@@ -43,6 +66,8 @@ describe('findFileAndGetSignedUrl', () => {
   afterAll(() => {
     delete process.env[`YEARS_TEST`];
     delete process.env[`PATH_TEST`];
+    delete process.env[`YEARS_TEST_ALT`];
+    delete process.env[`PATH_TEST_ALT`];
     for (const key of cleanupVars) {
       process.env[key] = process.env[key] || '';
     }
@@ -50,6 +75,7 @@ describe('findFileAndGetSignedUrl', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFs.readFile.mockRejectedValue(new Error('mountinfo indisponivel'));
   });
 
   it('retorna null quando ano nao tem configuracao', async () => {
@@ -58,11 +84,15 @@ describe('findFileAndGetSignedUrl', () => {
   });
 
   it('retorna erro quando todos caminhos inacessiveis', async () => {
-    mockFs.access.mockRejectedValue(new Error('EACCES'));
+    mockFs.access.mockRejectedValue(makeErrno('EACCES', 'access', SEARCH_ROOT));
 
     const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, 'protocolo');
 
-    expect(result).toEqual({ arquivos: null, _meta: { servers: [] }, erro: 'Nenhum caminho de rede acessivel' });
+    expect(result).toEqual({
+      arquivos: null,
+      _meta: { servers: [], sharesIndisponiveis: ['Servidor:inacessivel'] },
+      erro: 'Nenhum caminho de rede acessivel',
+    });
   });
 
   it('retorna resultado quando varredura nivel 0 encontra arquivo solto na raiz do dia', async () => {
@@ -160,6 +190,139 @@ describe('findFileAndGetSignedUrl', () => {
     const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
 
     expect(result).toEqual({ arquivos: null, _meta: { servers: ['Servidor'] }, erro: 'EHOSTDOWN: host is down, readdir /mnt/share/1999/1/2' });
+  });
+
+  describe('deteccao de share indisponivel', () => {
+    it('retorna erro quando o share nao esta montado e todos os prefixos dao ENOENT', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.stat.mockRejectedValue(makeEnoent('stat', SEARCH_ROOT));
+      mockFs.readFile.mockResolvedValue(MOUNTINFO_SEM_SHARE);
+
+      const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '1768379');
+
+      expect(result.arquivos).toBeNull();
+      expect(result.erro).toBe('share indisponivel: Servidor:nao-montado');
+      expect(result._meta.sharesIndisponiveis).toEqual(['Servidor:nao-montado']);
+    });
+
+    it('nao le a raiz do share quando o mountinfo ja prova que ele nao existe', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.stat.mockRejectedValue(makeEnoent('stat', SEARCH_ROOT));
+      mockFs.readFile.mockResolvedValue(MOUNTINFO_SEM_SHARE);
+
+      await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '1768379');
+
+      expect(mockFs.readdir).not.toHaveBeenCalled();
+    });
+
+    it('nao classifica como erro quando o share esta montado e o dia realmente nao existe', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.stat.mockRejectedValue(makeEnoent('stat', SEARCH_ROOT));
+      mockFs.readFile.mockResolvedValue(MOUNTINFO_COM_SHARE);
+
+      const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '1768379');
+
+      expect(result.arquivos).toBeNull();
+      expect(result.erro).toBeUndefined();
+      expect(result._meta.sharesIndisponiveis).toBeUndefined();
+    });
+
+    it('retorna erro quando a raiz do share esta vazia e o mountinfo nao pode ser lido', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.stat.mockRejectedValue(makeEnoent('stat', SEARCH_ROOT));
+      mockFs.readFile.mockRejectedValue(makeErrno('ENOENT', 'open', '/proc/self/mountinfo'));
+      mockFs.readdir.mockResolvedValue([]);
+
+      const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '1768379');
+
+      expect(result.erro).toBe('share indisponivel: Servidor:vazio');
+      expect(result._meta.sharesIndisponiveis).toEqual(['Servidor:vazio']);
+    });
+
+    it('nao classifica como erro quando a raiz tem conteudo e o mountinfo nao pode ser lido', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.stat.mockRejectedValue(makeEnoent('stat', SEARCH_ROOT));
+      mockFs.readFile.mockRejectedValue(makeErrno('ENOENT', 'open', '/proc/self/mountinfo'));
+      mockFs.readdir.mockResolvedValue([{ name: '2021', isDirectory: () => true }]);
+
+      const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '1768379');
+
+      expect(result.arquivos).toBeNull();
+      expect(result.erro).toBeUndefined();
+    });
+
+    it('marca o share como falha de rede quando o stat falha com EHOSTDOWN', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.stat.mockRejectedValue(makeErrno('EHOSTDOWN', 'stat', SEARCH_ROOT));
+
+      const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '1768379');
+
+      expect(result.erro).toBe('share indisponivel: Servidor:rede');
+      expect(result._meta.sharesIndisponiveis).toEqual(['Servidor:rede']);
+    });
+
+    it('nao consulta o mountinfo quando o share ja foi marcado como degradado', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.stat.mockRejectedValue(makeErrno('EHOSTDOWN', 'stat', SEARCH_ROOT));
+
+      await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '1768379');
+
+      expect(mockFs.readFile).not.toHaveBeenCalled();
+    });
+
+    it('nao classifica share cujo dia foi varrido sem erro', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.stat.mockResolvedValue(undefined);
+      mockFs.readdir.mockResolvedValue([{ name: '15', isDirectory: () => true }]);
+      mockFs.opendir.mockResolvedValue(makeMockDir([]));
+
+      const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '1768379');
+
+      expect(result.arquivos).toBeNull();
+      expect(result.erro).toBeUndefined();
+      expect(result._meta.sharesIndisponiveis).toBeUndefined();
+    });
+
+    it('nao classifica share quando o arquivo e encontrado normalmente', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.stat.mockResolvedValue(undefined);
+      mockFs.readdir.mockResolvedValue([{ name: '15', isDirectory: () => true }]);
+      mockFs.opendir.mockResolvedValue(makeMockDir([{ name: '1768379_01_02_03.wav', isDirectory: () => false }]));
+
+      const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '1768379');
+
+      expect(result.arquivos).toHaveLength(1);
+      expect(result.erro).toBeUndefined();
+    });
+  });
+
+  describe('shares parcialmente indisponiveis', () => {
+    it('reporta erro quando apenas um dos dois shares falha no gate de acesso', async () => {
+      mockFs.access.mockImplementation(async (target) => {
+        if (target === '/mnt/alt/shareB') throw makeErrno('EACCES', 'access', target);
+      });
+      mockFs.stat.mockResolvedValue(undefined);
+      mockFs.readdir.mockResolvedValue([{ name: '15', isDirectory: () => true }]);
+      mockFs.opendir.mockResolvedValue(makeMockDir([]));
+
+      const result = await findFileAndGetSignedUrl(`${TEST_ALT_YEAR}/01/02`, '1768379');
+
+      expect(result.erro).toBe('share indisponivel: Servidor:inacessivel');
+      expect(result._meta.sharesIndisponiveis).toEqual(['Servidor:inacessivel']);
+      expect(result._meta.servers).toEqual(['Servidor']);
+    });
+
+    it('nao reporta erro quando todos os shares respondem normalmente', async () => {
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.stat.mockResolvedValue(undefined);
+      mockFs.readdir.mockResolvedValue([{ name: '15', isDirectory: () => true }]);
+      mockFs.opendir.mockResolvedValue(makeMockDir([]));
+
+      const result = await findFileAndGetSignedUrl(`${TEST_ALT_YEAR}/01/02`, '1768379');
+
+      expect(result.erro).toBeUndefined();
+      expect(result._meta.servers).toEqual(['Servidor', 'Servidor']);
+    });
   });
 
   it('busca com signal abortado retorna null', async () => {

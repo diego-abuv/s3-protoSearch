@@ -140,7 +140,10 @@ async function doSearch(pasta, nomeProtocolo, log, onProgress, cacheKey, externa
 
       const localFiles = localResponse?.arquivos;
       const localMeta = localResponse?._meta || {};
-      Object.assign(mergedMeta, { servers: localMeta.servers || [] });
+      Object.assign(mergedMeta, {
+        servers: localMeta.servers || [],
+        sharesIndisponiveis: localMeta.sharesIndisponiveis || [],
+      });
 
       if (Array.isArray(localFiles)) {
         if (localFiles.length > 0) {

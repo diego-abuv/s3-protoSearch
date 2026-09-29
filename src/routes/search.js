@@ -165,6 +165,8 @@ export function createSearchRoutes(searchableService, { heartbeatMs = 20_000 } =
       if (meta.bucket) metaParts.push(`bucket=${meta.bucket}`);
       if (meta.prefixes?.length) metaParts.push(`prefixos=${meta.prefixes.join(';')}`);
       if (meta.servers?.length) metaParts.push(`servers=${meta.servers.join(';')}`);
+      if (meta.sharesIndisponiveis?.length)
+        metaParts.push(`shares_indisponiveis=${meta.sharesIndisponiveis.join(';')}`);
       if (meta.tempo_s3) metaParts.push(`tempo_s3=${meta.tempo_s3}`);
       if (meta.tempo_local) metaParts.push(`tempo_local=${meta.tempo_local}`);
       if (meta.cache !== undefined) metaParts.push(`cache=${meta.cache}`);
