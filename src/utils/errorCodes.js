@@ -1,5 +1,34 @@
+// Status possíveis reportados por localSearchService em "share indisponivel: NOME:status,...",
+// em ordem de prioridade — quando vários shares falham com status diferentes, a mensagem
+// exibida ao usuário reflete a causa mais relevante (rede antes de permissão, por exemplo).
+const SHARE_STATUS_MESSAGES = [
+  ['rede', 'Servidor de rede indisponível. Tente novamente.'],
+  ['nao-montado', 'Share não está montado no servidor. Contate o suporte técnico.'],
+  ['vazio', 'Share aparenta estar vazio ou desconectado. Contate o suporte técnico.'],
+  ['permissao', 'Acesso negado ao share. Verifique as permissões.'],
+  ['erro', 'Falha ao acessar o share. Contate o suporte técnico.'],
+];
+
+function translateShareIndisponivel(message) {
+  const match = message.match(/share indisponivel:\s*(.+)/i);
+  if (!match) return null;
+
+  const statuses = match[1]
+    .split(',')
+    .map((entry) => entry.split(':').pop()?.trim().toLowerCase())
+    .filter(Boolean);
+
+  for (const [status, mensagem] of SHARE_STATUS_MESSAGES) {
+    if (statuses.includes(status)) return mensagem;
+  }
+  return 'Servidor de rede indisponível. Tente novamente.';
+}
+
 export function translateError(message) {
   if (!message) return 'Ocorreu um erro inesperado.';
+
+  const shareMessage = translateShareIndisponivel(message);
+  if (shareMessage) return shareMessage;
 
   const lower = message.toLowerCase();
 
@@ -8,7 +37,7 @@ export function translateError(message) {
     lower.includes('host is down') ||
     lower.includes('ehostunreach') ||
     lower.includes('host unreachable') ||
-    lower.includes('share indisponivel')
+    lower.includes('nenhum caminho de rede')
   ) {
     return 'Servidor de rede indisponível. Tente novamente.';
   }

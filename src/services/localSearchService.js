@@ -27,6 +27,13 @@ function isNetworkError(err) {
   return NETWORK_ERROR_CODES.has(code) || /host is down|host unreachable/i.test(err.message || '');
 }
 
+function classifyAccessError(err) {
+  if (isNetworkError(err)) return 'rede';
+  const code = String(err.code || '').toLowerCase();
+  if (code === 'eacces' || code === 'eperm') return 'permissao';
+  return 'erro';
+}
+
 function makeTimeoutError() {
   const err = new Error(`timeout apos ${FS_PROBE_TIMEOUT_MS}ms`);
   err.code = 'ETIMEDOUT';
@@ -85,11 +92,11 @@ async function verifyShares(shareStates, log) {
 
   for (const [searchRoot, share] of healthy) {
     if (mountPoints) {
-      const mountState = resolveMountState(searchRoot, mountPoints);
+      const mountState = resolveMountState(share.mountRoot, mountPoints);
       if (mountState === true) continue;
       if (mountState === false) {
         share.status = 'nao-montado';
-        log.warn(`Share "${searchRoot}" nao esta montado neste container: o submount nao propagou.`);
+        log.warn(`Share "${share.mountRoot}" nao esta montado neste container: o submount nao propagou.`);
         continue;
       }
     }
@@ -110,9 +117,10 @@ async function verifyShares(shareStates, log) {
 }
 
 function listSharesIndisponiveis(shareStates) {
-  return [...shareStates.values()]
+  const indisponiveis = [...shareStates.values()]
     .filter((share) => share.status !== 'ok')
     .map((share) => `${share.nome}:${share.status}`);
+  return [...new Set(indisponiveis)];
 }
 
 function getPathConfigsForYear(anoBusca) {
@@ -143,17 +151,25 @@ function getPathConfigsForYear(anoBusca) {
   return configs;
 }
 
-const SERVER_NAMES = {
-  '192-168-0-254': 'AD-MBE',
-  '192-168-16-74': 'STORAGE',
-  '192-168-0-196': 'BACKUP',
-};
+function getServerNames() {
+  const raw = process.env.SERVER_NAMES;
+  if (!raw) return {};
+
+  const names = {};
+  for (const entry of raw.split(',')) {
+    const [ip, ...rest] = entry.split(':');
+    const nome = rest.join(':').trim();
+    if (ip?.trim() && nome) names[ip.trim()] = nome;
+  }
+  return names;
+}
 
 function getShareFriendlyName(searchRoot) {
-  for (const [ip, name] of Object.entries(SERVER_NAMES)) {
+  const serverNames = getServerNames();
+  for (const [ip, name] of Object.entries(serverNames)) {
     if (searchRoot.includes(ip)) return name;
   }
-  const match = searchRoot.match(/(\d+\.\d+\.\d+\.\d+)/);
+  const match = searchRoot.match(/(\d{1,3}[.-]\d{1,3}[.-]\d{1,3}[.-]\d{1,3})/);
   return match ? `Servidor ${match[1]}` : 'Servidor';
 }
 
@@ -217,13 +233,15 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = system
       }
 
       const friendlyName = getShareFriendlyName(searchRoot);
+      const mountRoot = pathConfig.basePath || searchRoot;
 
       try {
         await probeFilesystem(() => fs.access(searchRoot));
       } catch (err) {
         shareStates.set(searchRoot, {
           nome: friendlyName,
-          status: isNetworkError(err) ? 'rede' : 'inacessivel',
+          status: classifyAccessError(err),
+          mountRoot,
         });
         log.warn(
           `O caminho de busca "${searchRoot}" não está acessível ou excedeu timeout [${err.code || 'SEM_CODIGO'}]: ${err.message}. Pulando...`,
@@ -233,7 +251,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = system
 
       algumCaminhoAcessivel = true;
       serversConsulted.push(friendlyName);
-      shareStates.set(searchRoot, { nome: friendlyName, status: 'ok' });
+      shareStates.set(searchRoot, { nome: friendlyName, status: 'ok', mountRoot });
 
       const variantes = [
         path.join(ano, String(parseInt(mes, 10)), String(parseInt(dia, 10))),
@@ -266,7 +284,7 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = system
           log.info(`   [TIMING] ${prefixo}: inacessível (${(performance.now() - tStat).toFixed(0)}ms) [${codigo}]`);
           const share = shareStates.get(searchRoot);
           if (share && share.status === 'ok' && codigo !== 'ENOENT') {
-            share.status = isNetworkError(err) ? 'rede' : 'erro';
+            share.status = classifyAccessError(err);
           }
         }
       }
@@ -391,7 +409,10 @@ export async function findFileAndGetSignedUrl(pasta, nomeProtocolo, log = system
     return {
       arquivos: null,
       _meta: { servers: serversConsulted, sharesIndisponiveis },
-      erro: 'Nenhum caminho de rede acessivel',
+      erro:
+        sharesIndisponiveis.length > 0
+          ? `share indisponivel: ${sharesIndisponiveis.join(',')}`
+          : 'Nenhum caminho de rede acessivel',
     };
   }
 

@@ -36,10 +36,52 @@ describe('translateError', () => {
     );
   });
 
-  it('retorna mensagem de servidor indisponivel para share indisponivel', () => {
-    expect(translateError('share indisponivel: STORAGE:nao-montado')).toBe(
-      'Servidor de rede indisponível. Tente novamente.',
-    );
+  it('retorna mensagem de servidor indisponivel quando nenhum caminho de rede esta acessivel', () => {
+    expect(translateError('Nenhum caminho de rede acessivel')).toBe('Servidor de rede indisponível. Tente novamente.');
+  });
+
+  describe('share indisponivel — mensagem por status', () => {
+    it('retorna mensagem de rede para status rede', () => {
+      expect(translateError('share indisponivel: STORAGE:rede')).toBe(
+        'Servidor de rede indisponível. Tente novamente.',
+      );
+    });
+
+    it('retorna mensagem especifica quando o share nao esta montado', () => {
+      expect(translateError('share indisponivel: STORAGE:nao-montado')).toBe(
+        'Share não está montado no servidor. Contate o suporte técnico.',
+      );
+    });
+
+    it('retorna mensagem especifica quando a raiz do share esta vazia', () => {
+      expect(translateError('share indisponivel: STORAGE:vazio')).toBe(
+        'Share aparenta estar vazio ou desconectado. Contate o suporte técnico.',
+      );
+    });
+
+    it('retorna mensagem de acesso negado quando o status e permissao', () => {
+      expect(translateError('share indisponivel: STORAGE:permissao')).toBe(
+        'Acesso negado ao share. Verifique as permissões.',
+      );
+    });
+
+    it('retorna mensagem generica de falha quando o status e erro', () => {
+      expect(translateError('share indisponivel: STORAGE:erro')).toBe(
+        'Falha ao acessar o share. Contate o suporte técnico.',
+      );
+    });
+
+    it('prioriza rede sobre permissao quando shares diferentes falham com status diferentes', () => {
+      expect(translateError('share indisponivel: BACKUP:permissao,STORAGE:rede')).toBe(
+        'Servidor de rede indisponível. Tente novamente.',
+      );
+    });
+
+    it('prioriza nao-montado sobre permissao quando shares diferentes falham com status diferentes', () => {
+      expect(translateError('share indisponivel: BACKUP:permissao,STORAGE:nao-montado')).toBe(
+        'Share não está montado no servidor. Contate o suporte técnico.',
+      );
+    });
   });
 
   it('retorna mensagem de acesso negado para EACCES', () => {

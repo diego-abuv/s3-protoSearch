@@ -358,7 +358,7 @@ A especificação completa e interativa está disponível em **`/api-docs`** (Sw
 | `nao_encontrado` | `ok` | **200** | Local encontrou (fallback) |
 | `erro: ...` | `ok` | **200** | S3 falhou, local assumiu |
 | `nao_encontrado` | `nao_encontrado` | **404** | Arquivo não existe |
-| `nao_encontrado` | `erro: Servidor de rede indisponível. Tente novamente.` | **404** | Share indisponível (não montado, raiz vazia ou erro de rede) — resultado não confiável |
+| `nao_encontrado` | `erro: <mensagem específica>` | **404** | Share indisponível — resultado não confiável. Mensagem varia pelo status real: rede fora do ar, share não montado no container, raiz vazia ou acesso negado |
 | `erro: ...` | `erro: ...` | **404** | Ambas fontes falharam |
 
 ### Códigos HTTP comuns

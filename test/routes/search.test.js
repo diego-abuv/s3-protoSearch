@@ -194,7 +194,7 @@ describe('Search Routes', () => {
     it('audit registra interrompida=true quando o share local esta indisponivel', async () => {
       mockService.findFileAndGetSignedUrl.mockResolvedValue({
         arquivos: null,
-        status: { s3: 'nao_encontrado', local: 'erro: Servidor de rede indisponível. Tente novamente.' },
+        status: { s3: 'nao_encontrado', local: 'erro: Share não está montado no servidor. Contate o suporte técnico.' },
         _meta: { servers: ['STORAGE'], sharesIndisponiveis: ['STORAGE:nao-montado'] },
       });
 
@@ -213,7 +213,7 @@ describe('Search Routes', () => {
     it('audit registra quais shares estavam indisponiveis', async () => {
       mockService.findFileAndGetSignedUrl.mockResolvedValue({
         arquivos: null,
-        status: { s3: 'nao_encontrado', local: 'erro: Servidor de rede indisponível. Tente novamente.' },
+        status: { s3: 'nao_encontrado', local: 'erro: Share não está montado no servidor. Contate o suporte técnico.' },
         _meta: { servers: ['BACKUP', 'STORAGE'], sharesIndisponiveis: ['STORAGE:nao-montado'] },
       });
 
@@ -251,7 +251,7 @@ describe('Search Routes', () => {
     it('retorna 404 com status de erro quando o share esta indisponivel', async () => {
       mockService.findFileAndGetSignedUrl.mockResolvedValue({
         arquivos: null,
-        status: { s3: 'nao_encontrado', local: 'erro: Servidor de rede indisponível. Tente novamente.' },
+        status: { s3: 'nao_encontrado', local: 'erro: Share não está montado no servidor. Contate o suporte técnico.' },
         _meta: { servers: ['STORAGE'], sharesIndisponiveis: ['STORAGE:nao-montado'] },
       });
 
@@ -261,7 +261,7 @@ describe('Search Routes', () => {
         .send({ pasta: '2024/01/02', nomeProtocolo: '12345' });
 
       expect(res.status).toBe(404);
-      expect(res.body.status.local).toBe('erro: Servidor de rede indisponível. Tente novamente.');
+      expect(res.body.status.local).toBe('erro: Share não está montado no servidor. Contate o suporte técnico.');
     });
 
     it('audit registra interrompida=true sem cancelado=1 quando busca interrompida por desconexao', async () => {

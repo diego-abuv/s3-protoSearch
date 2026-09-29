@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 
 const mockFs = vi.hoisted(() => ({
   access: vi.fn(),
@@ -10,7 +10,6 @@ const mockFs = vi.hoisted(() => ({
 vi.mock('fs/promises', () => {
   return { ...mockFs, default: mockFs };
 });
-
 
 function makeMockDir(entries) {
   let idx = 0;
@@ -30,8 +29,10 @@ const SEARCH_ROOT = '/mnt/share/sub1';
 const MOUNTINFO_SEM_SHARE =
   '25 0 8:1 / / rw,relatime - ext4 /dev/sda1 rw,relatime\n' + '30 25 8:2 / /mnt rw,relatime - ext4 /dev/sda2 rw\n';
 
+// O mount CIFS real acontece no basePath (/mnt/share), nao na subpasta (/mnt/share/sub1) —
+// varias subpastas podem compartilhar o mesmo mount, como no caso real do servidor 0.196.
 const MOUNTINFO_COM_SHARE =
-  MOUNTINFO_SEM_SHARE + '31 30 0:99 / /mnt/share/sub1 rw,relatime - cifs //server/share rw,relatime\n';
+  MOUNTINFO_SEM_SHARE + '31 30 0:99 / /mnt/share rw,relatime - cifs //server/share rw,relatime\n';
 
 function makeEnoent(op, fullPath) {
   const err = new Error(`ENOENT: no such file or directory, ${op} '${fullPath}'`);
@@ -90,17 +91,15 @@ describe('findFileAndGetSignedUrl', () => {
 
     expect(result).toEqual({
       arquivos: null,
-      _meta: { servers: [], sharesIndisponiveis: ['Servidor:inacessivel'] },
-      erro: 'Nenhum caminho de rede acessivel',
+      _meta: { servers: [], sharesIndisponiveis: ['Servidor:permissao'] },
+      erro: 'share indisponivel: Servidor:permissao',
     });
   });
 
   it('retorna resultado quando varredura nivel 0 encontra arquivo solto na raiz do dia', async () => {
     mockFs.access.mockResolvedValue(undefined);
     mockFs.stat.mockResolvedValue(undefined);
-    mockFs.readdir.mockResolvedValue([
-      { name: '0336637208_01020304_123456.wav', isDirectory: () => false },
-    ]);
+    mockFs.readdir.mockResolvedValue([{ name: '0336637208_01020304_123456.wav', isDirectory: () => false }]);
 
     const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
 
@@ -125,9 +124,7 @@ describe('findFileAndGetSignedUrl', () => {
       close: vi.fn().mockResolvedValue(undefined),
     };
     mockFs.opendir.mockResolvedValue(badDir);
-    mockFs.readdir.mockResolvedValue([
-      { name: '15', isDirectory: () => true },
-    ]);
+    mockFs.readdir.mockResolvedValue([{ name: '15', isDirectory: () => true }]);
 
     const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
 
@@ -143,9 +140,7 @@ describe('findFileAndGetSignedUrl', () => {
     };
     const mockDir = makeMockDir([mockEntry]);
     mockFs.opendir.mockResolvedValue(mockDir);
-    mockFs.readdir.mockResolvedValue([
-      { name: '15', isDirectory: () => true },
-    ]);
+    mockFs.readdir.mockResolvedValue([{ name: '15', isDirectory: () => true }]);
 
     const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
 
@@ -160,9 +155,7 @@ describe('findFileAndGetSignedUrl', () => {
     setupStreamingTest();
 
     mockFs.opendir.mockRejectedValue(new Error('permission denied'));
-    mockFs.readdir.mockResolvedValue([
-      { name: '15', isDirectory: () => true },
-    ]);
+    mockFs.readdir.mockResolvedValue([{ name: '15', isDirectory: () => true }]);
 
     const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
 
@@ -173,13 +166,15 @@ describe('findFileAndGetSignedUrl', () => {
     setupStreamingTest();
 
     mockFs.opendir.mockRejectedValue(new Error('EHOSTDOWN: host is down, opendir /mnt/share/1999/1/2/9'));
-    mockFs.readdir.mockResolvedValue([
-      { name: '9', isDirectory: () => true },
-    ]);
+    mockFs.readdir.mockResolvedValue([{ name: '9', isDirectory: () => true }]);
 
     const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
 
-    expect(result).toEqual({ arquivos: null, _meta: { servers: ['Servidor'] }, erro: 'EHOSTDOWN: host is down, opendir /mnt/share/1999/1/2/9' });
+    expect(result).toEqual({
+      arquivos: null,
+      _meta: { servers: ['Servidor'] },
+      erro: 'EHOSTDOWN: host is down, opendir /mnt/share/1999/1/2/9',
+    });
   });
 
   it('retorna erro quando readdir do dia falha com EHOSTDOWN', async () => {
@@ -189,7 +184,11 @@ describe('findFileAndGetSignedUrl', () => {
 
     const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '0336637208');
 
-    expect(result).toEqual({ arquivos: null, _meta: { servers: ['Servidor'] }, erro: 'EHOSTDOWN: host is down, readdir /mnt/share/1999/1/2' });
+    expect(result).toEqual({
+      arquivos: null,
+      _meta: { servers: ['Servidor'] },
+      erro: 'EHOSTDOWN: host is down, readdir /mnt/share/1999/1/2',
+    });
   });
 
   describe('deteccao de share indisponivel', () => {
@@ -307,8 +306,8 @@ describe('findFileAndGetSignedUrl', () => {
 
       const result = await findFileAndGetSignedUrl(`${TEST_ALT_YEAR}/01/02`, '1768379');
 
-      expect(result.erro).toBe('share indisponivel: Servidor:inacessivel');
-      expect(result._meta.sharesIndisponiveis).toEqual(['Servidor:inacessivel']);
+      expect(result.erro).toBe('share indisponivel: Servidor:permissao');
+      expect(result._meta.sharesIndisponiveis).toEqual(['Servidor:permissao']);
       expect(result._meta.servers).toEqual(['Servidor']);
     });
 
@@ -322,6 +321,95 @@ describe('findFileAndGetSignedUrl', () => {
 
       expect(result.erro).toBeUndefined();
       expect(result._meta.servers).toEqual(['Servidor', 'Servidor']);
+    });
+
+    it('deduplica raizes do mesmo share quando todas falham com o mesmo status', async () => {
+      mockFs.access.mockRejectedValue(makeErrno('EACCES', 'access', '/mnt/alt/shareA'));
+
+      const result = await findFileAndGetSignedUrl(`${TEST_ALT_YEAR}/01/02`, '1768379');
+
+      expect(result._meta.sharesIndisponiveis).toEqual(['Servidor:permissao']);
+      expect(result.erro).toBe('share indisponivel: Servidor:permissao');
+    });
+
+    it('mantem status distintos do mesmo share sem mascarar a raiz inacessivel', async () => {
+      mockFs.access.mockImplementation(async (target) => {
+        if (target === '/mnt/alt/shareA') throw makeErrno('EACCES', 'access', target);
+      });
+      mockFs.stat.mockRejectedValue(makeEnoent('stat', '/mnt/alt/shareB'));
+      mockFs.readFile.mockResolvedValue(MOUNTINFO_SEM_SHARE);
+
+      const result = await findFileAndGetSignedUrl(`${TEST_ALT_YEAR}/01/02`, '1768379');
+
+      expect(result._meta.sharesIndisponiveis).toEqual(['Servidor:permissao', 'Servidor:nao-montado']);
+      expect(result.erro).toBe('share indisponivel: Servidor:permissao,Servidor:nao-montado');
+      expect(result._meta.servers).toEqual(['Servidor']);
+    });
+
+    it('trata subpastas do mesmo servidor como um unico mount (bug do PATH_196)', async () => {
+      // Reproduz a estrutura real do servidor 0.196: duas subpastas dentro do MESMO mount CIFS.
+      // O mountpoint real e o basePath (/mnt/alt); shareA e shareB sao apenas subpastas dele,
+      // nunca pontos de montagem proprios — a checagem de mountinfo deve usar o basePath.
+      const MOUNTINFO_COM_ALT = MOUNTINFO_SEM_SHARE + '31 30 0:99 / /mnt/alt rw,relatime - cifs //server/alt rw,relatime\n';
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.stat.mockResolvedValue(undefined);
+      mockFs.readdir.mockResolvedValue([{ name: '15', isDirectory: () => true }]);
+      mockFs.opendir.mockResolvedValue(makeMockDir([]));
+      mockFs.readFile.mockResolvedValue(MOUNTINFO_COM_ALT);
+
+      const result = await findFileAndGetSignedUrl(`${TEST_ALT_YEAR}/01/02`, '1768379');
+
+      expect(result.erro).toBeUndefined();
+      expect(result._meta.sharesIndisponiveis).toBeUndefined();
+    });
+  });
+
+  describe('nomes de servidor via SERVER_NAMES', () => {
+    afterEach(() => {
+      delete process.env.YEARS_IP_TEST;
+      delete process.env.PATH_IP_TEST;
+      delete process.env.SERVER_NAMES;
+    });
+
+    it('usa o nome customizado quando SERVER_NAMES mapeia o ip do share', async () => {
+      process.env.YEARS_IP_TEST = TEST_YEAR;
+      process.env.PATH_IP_TEST = '/mnt/10-0-0-5/share';
+      process.env.SERVER_NAMES = '10-0-0-5:MEU-SERVIDOR';
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.stat.mockResolvedValue(undefined);
+      mockFs.readdir.mockResolvedValue([{ name: '15', isDirectory: () => true }]);
+      mockFs.opendir.mockResolvedValue(makeMockDir([]));
+
+      const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '1768379');
+
+      expect(result._meta.servers).toContain('MEU-SERVIDOR');
+    });
+
+    it('cai no fallback "Servidor <ip>" com ip no formato de pastas reais (traco) quando SERVER_NAMES nao mapeia', async () => {
+      // Formato real usado em producao: /sharepoint/<ip-com-tracos>, ex. /sharepoint/192-168-16-74
+      process.env.YEARS_IP_TEST = TEST_YEAR;
+      process.env.PATH_IP_TEST = '/mnt/10-0-0-9/share';
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.stat.mockResolvedValue(undefined);
+      mockFs.readdir.mockResolvedValue([{ name: '15', isDirectory: () => true }]);
+      mockFs.opendir.mockResolvedValue(makeMockDir([]));
+
+      const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '1768379');
+
+      expect(result._meta.servers).toContain('Servidor 10-0-0-9');
+    });
+
+    it('cai no fallback "Servidor <ip>" com ip no formato de pontos quando SERVER_NAMES nao mapeia', async () => {
+      process.env.YEARS_IP_TEST = TEST_YEAR;
+      process.env.PATH_IP_TEST = '/mnt/10.0.0.9/share';
+      mockFs.access.mockResolvedValue(undefined);
+      mockFs.stat.mockResolvedValue(undefined);
+      mockFs.readdir.mockResolvedValue([{ name: '15', isDirectory: () => true }]);
+      mockFs.opendir.mockResolvedValue(makeMockDir([]));
+
+      const result = await findFileAndGetSignedUrl(`${TEST_YEAR}/01/02`, '1768379');
+
+      expect(result._meta.servers).toContain('Servidor 10.0.0.9');
     });
   });
 
